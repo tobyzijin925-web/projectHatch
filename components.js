@@ -1,0 +1,1258 @@
+window.SkillNestComponents = (() => {
+  const { taskChips, operators, hatchedWork } = window.SkillNestData;
+
+  function escapeHtml(value = "") {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  }
+
+  function tag(text, variant = "") {
+    return `<span class="tag ${variant}">${escapeHtml(text)}</span>`;
+  }
+
+  function statusInfo(status = "") {
+    const normalized = {
+      Open: "New Hatch",
+      Submitted: "New Hatch",
+      Accepted: "Incubating",
+      "In progress": "Incubating",
+      Completed: "Hatched",
+    }[status] || status || "New Hatch";
+
+    const icons = {
+      "New Hatch": "🥚",
+      Incubating: "🛠",
+      Hatched: "🐣",
+      Saved: "Saved",
+    };
+
+    return {
+      label: normalized,
+      icon: icons[normalized] || "",
+      className: normalized.toLowerCase().replaceAll(" ", "-"),
+    };
+  }
+
+  function statusBadge(status) {
+    const info = statusInfo(status);
+    return `<span class="status-pill hatch-status status-${info.className}">${info.icon ? `${info.icon} ` : ""}${escapeHtml(info.label)}</span>`;
+  }
+
+  function field(label, id, placeholder, type = "text", options = {}) {
+    const value = options.value ? ` value="${escapeHtml(options.value)}"` : "";
+    const readonly = options.readonly ? " readonly" : "";
+    return `
+      <label class="field">
+        <span>${label}</span>
+        <input id="${id}" type="${type}" placeholder="${placeholder}"${value}${readonly} required />
+      </label>
+    `;
+  }
+
+  function selectField(label, id, options, selected = "") {
+    return `
+      <label class="field">
+        <span>${label}</span>
+        <select id="${id}" required>
+          <option value="">Select</option>
+          ${options.map((option) => `<option${option === selected ? " selected" : ""}>${option}</option>`).join("")}
+        </select>
+      </label>
+    `;
+  }
+
+  function textAreaField(label, id, placeholder, value = "") {
+    return `
+      <label class="field full-field">
+        <span>${label}</span>
+        <textarea id="${id}" rows="5" placeholder="${placeholder}" required>${escapeHtml(value)}</textarea>
+      </label>
+    `;
+  }
+
+  function choiceField(label, name, options, otherPlaceholder) {
+    return `
+      <fieldset class="choice-field">
+        <legend>${label}</legend>
+        <div class="choice-options">
+          ${options.map((option) => `
+            <button class="choice-pill" type="button" name="${name}" value="${escapeHtml(option)}" aria-pressed="false" onclick="SkillNestApp.toggleChoice(event, this)">${option}</button>
+          `).join("")}
+        </div>
+        <div class="choice-other-row">
+          <input class="choice-other" name="${name}Other" type="text" placeholder="${otherPlaceholder}" />
+          <button class="btn secondary small" type="button" onclick="SkillNestApp.addCustomChoice(event, '${name}')">Add</button>
+        </div>
+      </fieldset>
+    `;
+  }
+
+  function sentenceTitle(text, fallback) {
+    const clean = text.replace(/\s+/g, " ").trim();
+    if (!clean) return fallback;
+    const firstSentence = clean.split(/[.!?]/)[0].trim();
+    return firstSentence.length > 76 ? `${firstSentence.slice(0, 73)}...` : firstSentence;
+  }
+
+  function normalizeTaskText(text = "") {
+    return String(text || "")
+      .replace(/\bcafé\b/gi, "cafe")
+      .replace(/\binstragram\b/gi, "instagram")
+      .replace(/\binsta\b/gi, "instagram");
+  }
+
+  function isLowQualityProjectInput(inputText = "", files = []) {
+    const clean = normalizeTaskText(inputText).toLowerCase().replace(/[^\w\s$-]/g, " ").replace(/\s+/g, " ").trim();
+    if (files.length && clean.length >= 6) return false;
+    if (!clean) return true;
+
+    const words = clean.split(" ").filter(Boolean);
+    const uniqueWords = new Set(words);
+    const greetings = new Set(["hi", "hello", "hey", "yo"]);
+    const vaguePhrases = ["i need help", "need help", "help me", "can you help", "please help"];
+    const taskSignals = [
+      "build", "create", "design", "write", "rewrite", "organize", "automate", "setup", "set up",
+      "make", "fix", "update", "content", "website", "menu", "post", "posts", "social", "caption",
+      "captions", "instagram", "product", "descriptions", "customer", "reply", "template", "spreadsheet",
+      "data", "chatbot", "workflow",
+    ];
+    const contextSignals = ["cafe", "restaurant", "salon", "store", "shop", "business", "client", "customer", "product", "menu"];
+
+    if (clean.length < 12) return true;
+    if (words.length >= 4 && taskSignals.some((signal) => clean.includes(signal)) && contextSignals.some((signal) => clean.includes(signal))) return false;
+    if (words.length <= 3 && !taskSignals.some((signal) => clean.includes(signal))) return true;
+    if (words.every((word) => greetings.has(word))) return true;
+    if (vaguePhrases.includes(clean)) return true;
+    if (words.length >= 3 && uniqueWords.size <= 2) return true;
+    if (/^(.)\1{5,}$/.test(clean.replace(/\s/g, ""))) return true;
+    if (!/[aeiou]/.test(clean) && clean.length > 8) return true;
+    if (/^[a-z]{8,}$/.test(clean) && uniqueWords.size === 1 && !taskSignals.some((signal) => clean.includes(signal))) return true;
+
+    return !taskSignals.some((signal) => clean.includes(signal)) && words.length < 6;
+  }
+
+  function detectIndustry(lower) {
+    if (lower.includes("cafe") || lower.includes("restaurant") || lower.includes("menu")) return "Restaurant";
+    if (lower.includes("product") || lower.includes("shopify") || lower.includes("store") || lower.includes("ecommerce")) return "E-commerce";
+    if (lower.includes("website") || lower.includes("salon") || lower.includes("booking") || lower.includes("barber")) return "Local Services";
+    if (lower.includes("real estate") || lower.includes("property") || lower.includes("lead")) return "Real Estate";
+    if (lower.includes("tutor") || lower.includes("school") || lower.includes("course")) return "Education";
+    return "General business";
+  }
+
+  function detectCategory(lower) {
+    if (lower.includes("website") || lower.includes("landing page")) return "Website";
+    if (lower.includes("caption") || lower.includes("instagram") || lower.includes("content") || lower.includes("reel")) return "Content";
+    if (lower.includes("chatbot") || lower.includes("reply") || lower.includes("faq")) return "Customer Support";
+    if (lower.includes("automate") || lower.includes("workflow") || lower.includes("sheet") || lower.includes("invoice")) return "Operations";
+    if (lower.includes("menu") || lower.includes("canva") || lower.includes("design")) return "Design";
+    return "General";
+  }
+
+  function suggestedLevel(lower) {
+    if (lower.includes("strategy") || lower.includes("full system") || lower.includes("complex")) return "L4";
+    if (lower.includes("automate") || lower.includes("workflow") || lower.includes("chatbot") || lower.includes("zapier")) return "L3";
+    if (lower.includes("website") || lower.includes("menu") || lower.includes("calendar") || lower.includes("template")) return "L2";
+    return "L1";
+  }
+
+  function levelBudget(level) {
+    return {
+      L1: "$50 - $150",
+      L2: "$150 - $500",
+      L3: "$500 - $1,500",
+      L4: "$1,500+",
+    }[level] || "$150 - $500";
+  }
+
+  function levelTimeline(level) {
+    return {
+      L1: "1-3 days",
+      L2: "3-7 days",
+      L3: "1-2 weeks",
+      L4: "2-4 weeks",
+    }[level] || "3-7 days";
+  }
+
+  function detectBudget(lower) {
+    const moneyMatch = lower.match(/\$[\d,]+(?:\s*-\s*\$?[\d,]+)?|\bunder\s*\$?\d+|\b\d+\s*(?:dollars|usd)\b/i);
+    if (moneyMatch) return moneyMatch[0];
+    if (lower.includes("cheap") || lower.includes("small budget")) return "Under $100";
+    if (lower.includes("flexible budget")) return "Flexible";
+    return "";
+  }
+
+  function detectTimeline(lower) {
+    if (lower.includes("this week") || lower.includes("urgent") || lower.includes("asap")) return "This week";
+    if (lower.includes("this month")) return "This month";
+    if (lower.includes("next week")) return "Next week";
+    if (lower.includes("flexible")) return "Flexible";
+    const dayMatch = lower.match(/\b\d+\s*(?:day|days|week|weeks|month|months)\b/i);
+    return dayMatch ? dayMatch[0] : "";
+  }
+
+  function detectReferences(lower, files = []) {
+    const references = [];
+    if (lower.includes("example") || lower.includes("reference") || lower.includes("inspiration")) references.push("Examples mentioned in description");
+    files.forEach((file) => references.push(file.name || file));
+    return references;
+  }
+
+  function suggestedTitle(cleanText, industry, category) {
+    const lower = cleanText.toLowerCase();
+    if (category === "Content" && lower.includes("instagram") && (lower.includes("cafe") || lower.includes("restaurant"))) return "Instagram content for a cafe";
+    if (industry !== "General business" && category !== "General") return `${industry} ${category}`.trim();
+    if (category !== "General") return category;
+    return sentenceTitle(cleanText, "New task");
+  }
+
+  function suggestedObjective(cleanText, industry, category) {
+    const lower = cleanText.toLowerCase();
+    if (category === "Content" && lower.includes("instagram") && (lower.includes("cafe") || lower.includes("restaurant"))) {
+      return "Create Instagram content from the cafe’s menu so the business can post consistently and attract local customers.";
+    }
+    if (category === "Website") {
+      if (lower.includes("salon")) return "Build a simple salon website that explains services, pricing, contact details, and booking clearly.";
+      if (lower.includes("nail")) return "Build a simple nail salon website that shows services, prices, examples, and booking information.";
+      if (industry === "Local Services") return "Build a simple local services website that explains the offer, builds trust, and helps customers make an enquiry or booking.";
+      return "Build a clear one-page website that explains the offer and gives visitors an obvious next step.";
+    }
+    if (category === "Customer Support") return "Create useful customer reply material so common questions can be answered faster and more consistently.";
+    if (category === "Operations") return "Organize the current workflow into a simpler process that saves time and reduces repeated admin work.";
+    if (category === "Design" && industry === "Restaurant") return "Create a clean restaurant menu that makes items, prices, and specials easy for customers to understand.";
+    if (category === "Design") return "Create a clean, usable design asset that is ready for the business to edit or publish.";
+    if (industry === "E-commerce") return "Improve product content so customers can understand, compare, and buy items more easily.";
+    if (industry !== "General business") return `Turn the ${industry.toLowerCase()} request into a clear, usable result for the client.`;
+    return cleanSentence(cleanText).replace(/\.$/, "") || "Create a clear, usable result for the client.";
+  }
+
+  function generateTaskBrief(inputText, files = []) {
+    const cleanText = normalizeTaskText(inputText).replace(/\s+/g, " ").trim();
+    if (isLowQualityProjectInput(cleanText, files)) {
+      return {
+        ok: false,
+        stage: "invalid_input",
+        isValidProject: false,
+        confidence: 10,
+        error: "Tell me what you need done, who it is for, and what a good result would look like.",
+      };
+    }
+
+    const lower = cleanText.toLowerCase();
+    const industry = detectIndustry(lower);
+    const category = detectCategory(lower);
+    const level = suggestedLevel(lower);
+    const title = suggestedTitle(cleanText, industry, category);
+    const budget = detectBudget(lower);
+    const timeline = detectTimeline(lower);
+    const references = detectReferences(lower, files);
+    const isInstagramCafe = category === "Content" && lower.includes("instagram") && (lower.includes("cafe") || lower.includes("restaurant"));
+
+    const deliverables = isInstagramCafe
+      ? ["Instagram post ideas", "Captions or copy", "Simple posting plan"]
+      : [
+          category === "Content" ? "Draft content set" : "First usable version",
+          category === "Operations" ? "Workflow notes" : "Clear delivery notes",
+          category === "Website" ? "Mobile-friendly page structure" : "Editable final files or templates",
+        ];
+
+    if (files.length) deliverables.push("Review attached reference files");
+
+    return {
+      ok: true,
+      stage: "clarifying_missing_info",
+      isValidProject: true,
+      confidence: 55,
+      title,
+      businessType: industry === "General business" ? "To be confirmed" : industry,
+      industry,
+      category,
+      suggestedLevel: level,
+      suggestedBudget: budget || levelBudget(level),
+      suggestedTimeline: timeline || levelTimeline(level),
+      budgetKnown: Boolean(budget),
+      timelineKnown: Boolean(timeline),
+      deliverables,
+      knownRequirements: [
+        cleanText,
+        files.length ? "Attached files should be reviewed before work begins." : "",
+      ].filter(Boolean),
+      constraints: [
+        lower.includes("brand") ? "Use existing brand direction." : "",
+        lower.includes("simple") ? "Keep the solution simple and easy to use." : "",
+      ].filter(Boolean),
+      references,
+      nextQuestion: {
+        key: !timeline ? "timeline" : !budget ? "budget" : "references",
+        prompt: !timeline
+          ? "When would you like this finished?"
+          : !budget
+            ? "What budget range feels comfortable?"
+            : "Do you have any examples or references to follow?",
+        suggestions: !timeline ? ["This week", "This month", "Flexible"] : !budget ? ["Under $100", "$100-300", "$300-700", "Flexible"] : ["No references yet"],
+        placeholder: !timeline ? "Type a timeline" : !budget ? "Type a budget" : "Add a reference",
+      },
+      questions: [
+        "When would you like this completed?",
+        "What budget range are you comfortable with?",
+        "Do you already have examples or references to follow?",
+      ],
+      missingInfo: [
+        industry === "General business" ? "industry" : "",
+        !budget ? "budget" : "",
+        !timeline ? "timeline" : "",
+        !references.length ? "references" : "",
+      ].filter(Boolean),
+      recommendedHatcherType: level === "L3" || level === "L4" ? `${level} specialist Hatcher` : `${level} practical Hatcher`,
+      summary: suggestedObjective(cleanText, industry, category),
+      sourceText: cleanText,
+      files,
+      clarificationCount: 0,
+    };
+  }
+
+  function projectReadiness(brief) {
+    if (brief?.isProcessing) return "Understanding Your Project";
+    if (brief?.stage === "invalid_input" || brief?.isValidProject === false || Number(brief?.confidence || 0) < 40) return "Needs More Context";
+    if (brief?.stage === "ready_to_post") return "Ready to Post";
+    const allowed = ["Needs More Context", "Understanding Your Project", "Almost Ready", "Ready to Post"];
+    if (allowed.includes(brief?.readiness)) return brief.readiness;
+    const missing = brief?.missingInfo?.length || 0;
+    if (!brief?.ok) return "Needs More Context";
+    if (missing >= 3) return "Needs More Context";
+    if (missing === 2) return "Understanding Your Project";
+    if (missing === 1) return "Almost Ready";
+    return "Ready to Post";
+  }
+
+  function isProjectReady(brief) {
+    return projectReadiness(brief) === "Ready to Post";
+  }
+
+  function understandingStatement(brief) {
+    if (!brief?.ok) return "Tell me what you need done, who it is for, and what a good result would look like.";
+    if (brief.category === "Content") return `It sounds like your goal is to create usable content for ${brief.industry === "General business" ? "your project" : `a ${brief.industry.toLowerCase()} business`}, not just collect random ideas.`;
+    if (brief.category === "Website") return "It sounds like you need a clear web presence that explains the offer and helps people take action.";
+    if (brief.category === "Operations") return "It sounds like you want to reduce manual work and make the process easier to repeat.";
+    if (brief.category === "Customer Support") return "It sounds like you want clearer customer responses so common questions are handled consistently.";
+    return "It sounds like you have a practical project that needs to be shaped into clear work a Hatcher can execute.";
+  }
+
+  function briefSearchText(brief = {}) {
+    return [
+      brief.title,
+      brief.summary,
+      brief.businessType,
+      brief.industry,
+      brief.category,
+      ...(brief.deliverables || []),
+      brief.sourceText,
+    ].filter(Boolean).join(" ").toLowerCase();
+  }
+
+  function referenceQuestionForBrief(brief = {}) {
+    const text = briefSearchText(brief);
+    if (text.includes("menu") || text.includes("restaurant") || text.includes("cafe") || text.includes("instagram")) {
+      return {
+        key: "references",
+        reason: "The Hatcher needs the actual food details so the work is accurate, not generic.",
+        prompt: "Can you provide a menu photo/link, item list with prices, or examples of your current style?",
+        suggestions: ["I can attach a menu", "I can paste food items", "No menu yet", "Use best judgment"],
+        placeholder: "Paste menu items, prices, links, or notes",
+      };
+    }
+    if (text.includes("website") || text.includes("salon") || text.includes("booking")) {
+      return {
+        key: "references",
+        reason: "The Hatcher needs the real services, prices, photos, and booking details.",
+        prompt: "What source material can you provide for the website?",
+        suggestions: ["Services and prices", "Photos/logo", "Existing website", "No materials yet"],
+        placeholder: "Paste services, prices, links, or notes",
+      };
+    }
+    if (text.includes("product") || text.includes("shopify") || text.includes("e-commerce") || text.includes("ecommerce")) {
+      return {
+        key: "references",
+        reason: "The Hatcher needs product details to avoid guessing.",
+        prompt: "Can you share product names, current descriptions, photos, or a store link?",
+        suggestions: ["Product list", "Store link", "Current descriptions", "No materials yet"],
+        placeholder: "Paste product details, links, or notes",
+      };
+    }
+    if (text.includes("faq") || text.includes("chatbot") || text.includes("support") || text.includes("reply")) {
+      return {
+        key: "references",
+        reason: "The Hatcher needs real customer questions and policies to write useful replies.",
+        prompt: "Can you share your FAQ, policies, common questions, or tone examples?",
+        suggestions: ["FAQ/policies", "Common questions", "Tone examples", "No materials yet"],
+        placeholder: "Paste FAQ, policies, questions, or notes",
+      };
+    }
+    return {
+      key: "references",
+      reason: "Source material helps the Hatcher work from real context instead of guessing.",
+      prompt: "What source material should the Hatcher use?",
+      suggestions: ["I have files", "I have links", "No materials yet"],
+      placeholder: "Paste a link, note, or source material",
+    };
+  }
+
+  function nextClarification(brief) {
+    if (!brief?.ok || brief.isProcessing || isProjectReady(brief) || (brief.clarificationCount || 0) >= 5) return null;
+    if (brief.stage === "invalid_input" || brief.isValidProject === false || Number(brief.confidence || 0) < 40) {
+      return {
+        key: "objective",
+        reason: "",
+        prompt: "What are you trying to accomplish?",
+        suggestions: ["Create social posts", "Build a simple website", "Organize customer data"],
+        placeholder: "Describe the project in your own words",
+      };
+    }
+    if (brief.nextQuestion?.key && brief.nextQuestion.key !== "none" && brief.nextQuestion.prompt) {
+      return {
+        key: brief.nextQuestion.key,
+        reason: brief.nextQuestion.reason || "",
+        prompt: brief.nextQuestion.prompt,
+        suggestions: Array.isArray(brief.nextQuestion.suggestions) ? brief.nextQuestion.suggestions.filter(Boolean) : [],
+        placeholder: brief.nextQuestion.placeholder || "Type your answer",
+      };
+    }
+    const missing = brief.missingInfo || [];
+    if (missing.includes("timeline")) {
+      return {
+        key: "timeline",
+        reason: "Timing changes who we should match you with and how tightly the work should be scoped.",
+        prompt: "When would you like this completed?",
+        suggestions: ["This week", "This month", "Flexible"],
+        placeholder: "Custom deadline",
+      };
+    }
+    if (missing.includes("budget")) {
+      return {
+        key: "budget",
+        reason: "Budget helps keep the project realistic before Hatchers apply.",
+        prompt: "What budget range are you comfortable with?",
+        suggestions: ["Under $100", "$100-300", "$300-1000", "Flexible"],
+        placeholder: "Custom budget",
+      };
+    }
+    if (missing.includes("industry")) {
+      return {
+        key: "industry",
+        reason: "The business context changes the examples, tools, and Hatcher experience that matter.",
+        prompt: "What type of business or project is this for?",
+        suggestions: ["Restaurant", "Retail", "Professional Services", "Education", "Other"],
+        placeholder: "Type of business",
+      };
+    }
+    if (missing.includes("references")) {
+      return referenceQuestionForBrief(brief);
+    }
+    return null;
+  }
+
+  function fallbackAssistantMessage(brief) {
+    if (brief?.isProcessing) return "I’m reading through your project...";
+    if (brief?.stage === "invalid_input" || brief?.isValidProject === false || Number(brief?.confidence || 0) < 40) {
+      return "Tell me what you need done, who it is for, and what a good result would look like.";
+    }
+    const question = nextClarification(brief);
+    if (!question) {
+      return "I think this captures what you mean. You can post it when you’re ready.";
+    }
+    const understanding = brief.understanding || understandingStatement(brief);
+    const reason = question.reason ? ` ${question.reason}` : "";
+    return `${understanding}${reason} ${question.prompt}`;
+  }
+
+  function buildTaskBrief(rawText) {
+    const brief = generateTaskBrief(rawText, []);
+    if (!brief.ok) {
+      return {
+        title: rawText || "New task",
+        outcome: "Add more detail to build a stronger Hatch brief.",
+        scope: ["Clarify the expected result."],
+        detailsNeeded: ["More detail"],
+        industry: "General business",
+        likelyLevel: "L1",
+      };
+    }
+
+    return {
+      title: brief.title,
+      outcome: brief.summary,
+      scope: brief.deliverables,
+      detailsNeeded: brief.questions,
+      industry: brief.industry,
+      likelyLevel: brief.suggestedLevel,
+    };
+  }
+
+  function taskBriefPreviewMarkup(brief) {
+    if (!brief?.ok) return "";
+    return `
+      <div class="preview-head">
+        <span class="tag level">${brief.suggestedLevel}</span>
+        <span class="tag">${brief.industry}</span>
+        <span class="tag">${brief.category}</span>
+      </div>
+      <strong>${escapeHtml(brief.title)}</strong>
+      <p>${escapeHtml(brief.summary)}</p>
+      <small>${escapeHtml(brief.suggestedBudget)} · ${escapeHtml(brief.suggestedTimeline)}</small>
+    `;
+  }
+
+  const builderSections = [
+    { id: "title", label: "Project", short: "Project", prompt: "Here’s how I’d write this.", optional: false },
+    { id: "businessType", label: "Business", short: "Business", prompt: "I think this is who the work is for.", optional: false },
+    { id: "summary", label: "Goal", short: "Goal", prompt: "Here’s how I’d summarize the goal.", multiline: true, optional: false },
+    { id: "deliverables", label: "Deliverables", short: "Deliverables", prompt: "Here’s what I think the Hatcher should create.", multiline: true, list: true, optional: false },
+    { id: "suggestedTimeline", label: "Timeline", short: "Timeline", prompt: "Here’s the timeline I’d use for now.", optional: false },
+    { id: "suggestedBudget", label: "Budget", short: "Budget", prompt: "Here’s the budget range I’d suggest.", optional: false },
+    { id: "industry", label: "Industry", short: "Industry", prompt: "Here’s the category I’d use for matching.", optional: false },
+    { id: "references", label: "References / files", short: "References", prompt: "Here’s what I found for references or files.", multiline: true, list: true, optional: true },
+    { id: "constraints", label: "Constraints", short: "Constraints", prompt: "Here’s what I’d note so the work stays on track.", multiline: true, list: true, optional: true },
+  ];
+
+  function readLocalJson(key, fallback) {
+    try {
+      return JSON.parse(localStorage.getItem(key)) || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function sectionValue(brief, id) {
+    const values = {
+      title: brief.title,
+      businessType: brief.businessType,
+      summary: brief.summary,
+      deliverables: brief.deliverables || [],
+      suggestedTimeline: brief.suggestedTimeline,
+      suggestedBudget: brief.suggestedBudget,
+      industry: brief.industry,
+      references: brief.references || [],
+      constraints: brief.constraints || [],
+    };
+    return values[id];
+  }
+
+  function sectionHasValue(brief, section) {
+    if (brief.isProcessing) return false;
+    if (section.id === "suggestedTimeline") return Boolean(brief.timelineKnown);
+    if (section.id === "suggestedBudget") return Boolean(brief.budgetKnown);
+    const value = sectionValue(brief, section.id);
+    if (Array.isArray(value)) return value.filter(Boolean).length > 0;
+    return Boolean(String(value || "").trim());
+  }
+
+  function sectionSummary(brief, section) {
+    const value = sectionValue(brief, section.id);
+    if (brief.isProcessing) return "Working on it...";
+    if (Array.isArray(value)) {
+      if (!value.length) return section.optional ? "Can stay flexible" : "Take a look";
+      return value.slice(0, 2).join(", ");
+    }
+    const text = String(value || "").trim();
+    if (section.id === "suggestedTimeline" && text && !brief.timelineKnown) return `Suggested: ${text}`;
+    if (section.id === "suggestedBudget" && text && !brief.budgetKnown) return `Suggested: ${text}`;
+    if (!text) return section.optional ? "Can stay flexible" : "Take a look";
+    return text.length > 92 ? `${text.slice(0, 89)}...` : text;
+  }
+
+  function sectionLongValue(brief, section) {
+    const value = sectionValue(brief, section.id);
+    if (brief.isProcessing) return "Working on it...";
+    if (Array.isArray(value)) return value.length ? value.join("\n") : "";
+    return String(value || "").trim();
+  }
+
+  function activeSectionMessage(brief, section) {
+    if (brief.isProcessing) return "I’m reading through your project...";
+    if (brief.stage === "invalid_input" || brief.isValidProject === false || Number(brief.confidence || 0) < 40) {
+      return "Tell me what you need done, who it is for, and what a good result would look like.";
+    }
+    const value = sectionLongValue(brief, section);
+    if (!value && section.optional) return "We can leave this flexible for now, or add it if you already have something in mind.";
+    if (!value) return smartQuestionForSection(section);
+    return smartQuestionForSection(section, value);
+  }
+
+  function smartQuestionForSection(section, value = "") {
+    const withValue = Boolean(String(value || "").trim());
+    const questions = {
+      title: withValue ? "I’ve drafted a project title in the background. What would you call this in your own words?" : "What should we call this Hatch?",
+      businessType: withValue ? "I think I understand who this is for. Is there anything specific about the business I should know?" : "Who is this for?",
+      summary: withValue ? "I’ve got the main goal. What outcome matters most to you?" : "What outcome are you hoping for?",
+      deliverables: withValue ? "I’ve started listing the deliverables. What should the Hatcher definitely hand over?" : "What should the Hatcher deliver?",
+      suggestedTimeline: withValue ? "I’ve put a timeline in the brief. Should we keep it, or make it flexible?" : "When would you ideally like this finished?",
+      suggestedBudget: withValue ? "I’ve added a budget direction. Should we keep that, or leave it flexible?" : "What budget range feels comfortable?",
+      industry: withValue ? "I’ve matched this to an industry. Does that category fit?" : "What industry or category does this belong to?",
+      references: "Do you have examples, files, or links the Hatcher should follow?",
+      constraints: "Anything the Hatcher should avoid or keep in mind?",
+    };
+    return questions[section.id] || "What should Hatch know for this part?";
+  }
+
+  function focusedSectionCard(brief, section) {
+    const editKey = localStorage.getItem("hatchBriefEditKey");
+    const editing = editKey === section.id;
+    const inputId = `focused_${section.id}`;
+    const value = sectionLongValue(brief, section);
+    const hasValue = sectionHasValue(brief, section);
+    const messages = readLocalJson("hatchSectionMessages", {})[section.id] || [];
+    const editingControl = section.id === "suggestedLevel"
+      ? `<select id="${inputId}">${["L1", "L2", "L3", "L4"].map((level) => `<option value="${level}"${value === level ? " selected" : ""}>${level}</option>`).join("")}</select>`
+      : section.multiline
+        ? `<textarea id="${inputId}" rows="5" placeholder="No worries — tell me what you’d change.">${escapeHtml(value)}</textarea>`
+        : `<input id="${inputId}" type="text" value="${escapeHtml(value)}" placeholder="No worries — tell me what you’d change." />`;
+
+    return `
+      <article class="focused-section-card">
+        <div class="focused-section-top">
+          <span class="section-count">Active section</span>
+          <h3>${escapeHtml(section.label)}</h3>
+        </div>
+        <div class="assistant-section-note">
+          <p>${escapeHtml(activeSectionMessage(brief, section))}</p>
+          ${messages.length ? `<div class="section-message-log">${messages.map((message) => `<span>${escapeHtml(message)}</span>`).join("")}</div>` : ""}
+        </div>
+        ${brief.isProcessing ? `
+          <div class="proposed-brief-text empty">
+            <p>Hatch is organizing this section...</p>
+          </div>
+        ` : editing ? `
+          <div class="focused-edit">
+            ${editingControl}
+            <div class="focused-actions">
+              <button class="btn primary" type="button" onclick="SkillNestApp.updateSection('${section.id}', document.getElementById('${inputId}').value)">Save change</button>
+              <button class="btn ghost" type="button" onclick="SkillNestApp.cancelBriefEdit()">Cancel</button>
+            </div>
+          </div>
+        ` : `
+          <div class="proposed-brief-text ${value ? "" : "empty"}">
+            ${section.list && value
+              ? `<ul>${value.split(/\n|,/).map((item) => item.trim()).filter(Boolean).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+              : `<p>${escapeHtml(value || (section.optional ? "We can leave this flexible for now." : "Take a look"))}</p>`}
+          </div>
+          <div class="focused-actions">
+            <button class="btn primary" type="button" ${!hasValue && !section.optional ? "disabled" : ""} onclick="SkillNestApp.confirmSection('${section.id}')">Confirm</button>
+            <button class="btn secondary" type="button" onclick="SkillNestApp.editSection('${section.id}')">Edit</button>
+            <button class="btn secondary" type="button" onclick="SkillNestApp.rewriteSection('${section.id}')">Ask Hatch to rewrite</button>
+            ${section.optional ? `<button class="btn ghost" type="button" onclick="SkillNestApp.confirmSection('${section.id}')">Skip for now</button>` : ""}
+          </div>
+        `}
+      </article>
+    `;
+  }
+
+  function sectionRail(brief, activeIndex, completed) {
+    return `
+      <div class="section-rail passive-tracker">
+        ${builderSections.map((section, index) => {
+          const done = completed.includes(section.id);
+          const active = index === activeIndex;
+          const future = index > activeIndex && !done;
+          const hasValue = sectionHasValue(brief, section);
+          const status = done ? "✓" : hasValue ? "Take a look" : future ? "Later" : "Needs answer";
+          return `
+            <article class="section-rail-card ${active ? "active" : ""} ${done ? "done" : ""} ${future ? "future" : ""}">
+              <span>${escapeHtml(section.short)}</span>
+              <strong>${escapeHtml(sectionSummary(brief, section))}</strong>
+              <em>${escapeHtml(status)}</em>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    `;
+  }
+
+  function finalReviewMarkup(brief, files, completed) {
+    const showEditor = localStorage.getItem("hatchShowFinalEditSections") === "true";
+    return `
+      <div class="final-review">
+        <div class="final-review-head">
+          <span class="readiness-pill">Ready to Post</span>
+          <h3>Final Review</h3>
+          <p>This is the version Hatchers will use to understand the Hatch.</p>
+        </div>
+        <div class="final-brief-list">
+          ${builderSections.map((section) => `
+            <article>
+              <span>${escapeHtml(section.label)}</span>
+              <p>${escapeHtml(sectionSummary(brief, section))}</p>
+            </article>
+          `).join("")}
+          <article>
+            <span>Attached files</span>
+            <p>${files.length ? files.map((file) => `${file.materialType || "File"}: ${file.name || file}`).join(", ") : "No files attached"}</p>
+          </article>
+          <article>
+            <span>Recommended Hatcher level</span>
+            <p>${escapeHtml(brief.recommendedHatcherType || brief.suggestedLevel || "L1")}</p>
+          </article>
+        </div>
+        <div class="focused-actions">
+          <button class="btn primary" type="button" onclick="SkillNestApp.submitReviewedHatch()">Submit Hatch</button>
+          <button class="btn secondary" type="button" onclick="SkillNestApp.toggleFinalEditList()">Edit a section</button>
+          <button class="btn ghost" type="button" onclick="SkillNestApp.saveHatchDraft()">Save draft</button>
+        </div>
+        ${showEditor ? `
+          <div class="final-edit-list" aria-label="Choose a section to edit">
+            ${builderSections.map((section) => `
+              <button type="button" onclick="SkillNestApp.editFinalSection('${section.id}')">
+                <span>${escapeHtml(section.label)}</span>
+                <strong>${escapeHtml(sectionSummary(brief, section))}</strong>
+              </button>
+            `).join("")}
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }
+
+  function filePreviewListMarkup(files = [], emptyText = "No files attached yet") {
+    if (!files.length) return `<div class="file-preview-empty">${escapeHtml(emptyText)}</div>`;
+    const labelOptions = ["Services and prices", "Photos/logo", "Existing website", "Menu/items", "Brand examples", "Notes", "Other material"];
+    return files.map((file, index) => {
+      const size = file.size ? `${Math.ceil(file.size / 1024)} KB` : "Size unavailable";
+      const type = file.type || "file";
+      const materialType = file.materialType || "Other material";
+      return `
+        <article class="file-preview">
+          <div>
+            <strong>${escapeHtml(file.name || file)}</strong>
+            <span>${escapeHtml(type)} · ${size}</span>
+            <label class="file-label-control">
+              <span>Label</span>
+              <select onchange="SkillNestApp.updateDraftFileLabel(${index}, this.value)">
+                ${labelOptions.map((option) => `<option value="${escapeHtml(option)}"${option === materialType ? " selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+                ${labelOptions.includes(materialType) ? "" : `<option value="${escapeHtml(materialType)}" selected>${escapeHtml(materialType)}</option>`}
+              </select>
+            </label>
+          </div>
+          <button class="btn ghost small danger" type="button" onclick="SkillNestApp.removeDraftFile(${index})">Remove</button>
+        </article>
+      `;
+    }).join("");
+  }
+
+  function referenceAttachmentMarkup(files = [], materialSuggestions = []) {
+    const materialButtons = materialSuggestions.filter((item) => !/no materials/i.test(item));
+    const noMaterials = materialSuggestions.find((item) => /no materials/i.test(item));
+    return `
+      <div class="reference-attachment-panel">
+        <div>
+          <strong>Attach source files</strong>
+          <p>Choose what kind of material you’re adding, then attach the matching files. You can relabel files after upload.</p>
+        </div>
+        ${materialButtons.length ? `
+          <div class="material-type-grid" aria-label="Material types">
+            ${materialButtons.map((item) => `
+              <button class="material-type-button" type="button" onclick="SkillNestApp.attachReferenceMaterial(decodeURIComponent('${encodeURIComponent(item)}'))">
+                ${escapeHtml(item)}
+              </button>
+            `).join("")}
+          </div>
+        ` : ""}
+        <div class="reference-attachment-actions">
+          <button class="tool-button" type="button" onclick="SkillNestApp.attachReferenceMaterial('Other material')">Attach other files</button>
+          ${noMaterials ? `<button class="btn ghost small" type="button" onclick="SkillNestApp.sendAssistantReply(decodeURIComponent('${encodeURIComponent(noMaterials)}'))">${escapeHtml(noMaterials)}</button>` : ""}
+          <button class="btn secondary small" type="button" ${files.length ? "" : "disabled"} onclick="SkillNestApp.completeReferenceFiles()">Use these files and continue</button>
+          <input id="reviewTaskFile" class="hidden-file" type="file" multiple onchange="SkillNestApp.handleTaskFiles(event)" />
+        </div>
+        <div class="file-preview-list review-file-preview-list" data-file-preview>
+          ${filePreviewListMarkup(files)}
+        </div>
+      </div>
+    `;
+  }
+
+  function conversationSectionMarkup(brief) {
+    const completed = readLocalJson("hatchCompletedSections", []);
+    const activeIndex = Math.min(Number(localStorage.getItem("hatchActiveSectionIndex") || 0), builderSections.length);
+    const isFinal = activeIndex >= builderSections.length;
+    const files = readLocalJson("skillnestDraftFiles", []);
+    if (brief?.isProcessing) {
+      return `
+        <div class="conversation-focus-card processing">
+          <span>Reading</span>
+          <h3>I’m reading through your project...</h3>
+          <p>I’ll handle the structure and bring back a first version.</p>
+        </div>
+      `;
+    }
+    if (isFinal) return finalReviewMarkup(brief, files, completed);
+    if (brief.stage === "invalid_input" || brief.isValidProject === false || Number(brief.confidence || 0) < 40) return "";
+
+    const section = builderSections[activeIndex];
+    const value = sectionLongValue(brief, section);
+    return `
+      <div class="conversation-focus-card compact-conversation-focus">
+        <div>
+          <span>Now working on</span>
+          <h3>${escapeHtml(section.label)}</h3>
+        </div>
+        ${value ? `<p class="quiet-update">Current draft: ${escapeHtml(sectionSummary(brief, section))}</p>` : ""}
+      </div>
+    `;
+  }
+
+  function taskReviewBriefMarkup(brief, files = []) {
+    const safeBrief = brief?.ok ? brief : generateTaskBrief("", files);
+    const completed = readLocalJson("hatchCompletedSections", []);
+    const activeIndex = Math.min(Number(localStorage.getItem("hatchActiveSectionIndex") || 0), builderSections.length);
+    const stepNumber = Math.min(activeIndex + 1, builderSections.length);
+    const isFinal = activeIndex >= builderSections.length;
+
+    return `
+      <div class="tracker-card">
+        <div class="builder-progress">
+          <span>Step ${isFinal ? builderSections.length : stepNumber} of ${builderSections.length}</span>
+          <strong>${isFinal ? "Review" : escapeHtml(builderSections[activeIndex].label)}</strong>
+        </div>
+        <div class="step-track">
+          ${builderSections.map((section, index) => `<span class="${completed.includes(section.id) ? "done" : ""} ${index === activeIndex ? "active" : ""}"></span>`).join("")}
+        </div>
+        ${isFinal ? `<p class="tracker-note">The brief is ready for a final look.</p>` : `<p class="tracker-note">Hatch is building the brief quietly as you answer.</p>`}
+        ${sectionRail(safeBrief, activeIndex, completed)}
+      </div>
+    `;
+  }
+
+  function clarificationCardMarkup(brief) {
+    const question = nextClarification(brief);
+    if (!question) {
+      return `
+        <section class="clarification-card ready">
+          <h2>Ready to post.</h2>
+          <p>Your project brief has enough detail for Hatchers to understand the work.</p>
+        </section>
+      `;
+    }
+    const showSuggestions = projectReadiness(brief) !== "Needs More Context" || (brief.clarificationCount || 0) > 0;
+
+    return `
+      <section class="clarification-card">
+        <h2>Here’s what I understand so far.</h2>
+        <p>${escapeHtml(understandingStatement(brief))}</p>
+        <p>${escapeHtml(question.reason)}</p>
+        <strong class="clarification-question">${escapeHtml(question.prompt)}</strong>
+        ${showSuggestions ? `<div class="suggestion-row">
+          ${question.suggestions.map((item) => `<button class="choice-chip" type="button" onclick="SkillNestApp.sendAssistantReply('${escapeHtml(item)}')">${escapeHtml(item)}</button>`).join("")}
+        </div>` : ""}
+        <div class="clarification-input">
+          <input id="clarificationAnswer" type="text" placeholder="${escapeHtml(question.placeholder)}" />
+          <button class="btn primary small" type="button" onclick="SkillNestApp.sendAssistantReply(document.getElementById('clarificationAnswer')?.value || '')">Add</button>
+        </div>
+      </section>
+    `;
+  }
+
+  function assistantConversationMarkup(messages = [], brief) {
+    const question = nextClarification(brief);
+    const shownMessages = messages.length
+      ? messages
+      : [{ role: "assistant", text: fallbackAssistantMessage(brief) }];
+    const activeIndex = Math.min(Number(localStorage.getItem("hatchActiveSectionIndex") || 0), builderSections.length);
+    const ready = activeIndex >= builderSections.length;
+    const processing = Boolean(brief?.isProcessing);
+    const invalid = brief?.stage === "invalid_input" || brief?.isValidProject === false || Number(brief?.confidence || 0) < 40;
+    const placeholder = invalid ? "Tell Hatch what you want to build or get done..." : "Reply to Hatch...";
+    const contextualSuggestions = !processing && !ready && !invalid && question?.suggestions?.length ? question.suggestions : [];
+    const files = readLocalJson("skillnestDraftFiles", []);
+    const completed = readLocalJson("hatchCompletedSections", []);
+    const activeSectionId = builderSections[activeIndex]?.id || "";
+    const showFileTools = !processing && !ready && !invalid && activeSectionId === "references";
+
+    return `
+      <section class="assistant-panel">
+        ${processing ? `<div class="reading-indicator"><span></span><span></span><span></span></div>` : ""}
+        <div class="assistant-thread" id="assistantThread">
+          ${shownMessages.map((message) => `
+            <article class="assistant-message ${message.role}">
+              <span>${message.role === "assistant" ? "Hatch Assistant" : "You"}</span>
+              <p>${escapeHtml(message.text)}</p>
+            </article>
+          `).join("")}
+        </div>
+        ${ready ? finalReviewMarkup(brief, files, completed) : ""}
+        ${showFileTools ? referenceAttachmentMarkup(files, contextualSuggestions) : ""}
+        ${contextualSuggestions.length && !showFileTools ? `<div class="assistant-suggestions" aria-label="Suggested replies">
+          ${contextualSuggestions.map((item) => `<button class="choice-chip" type="button" onclick="SkillNestApp.sendAssistantReply(decodeURIComponent('${encodeURIComponent(item)}'))">${escapeHtml(item)}</button>`).join("")}
+        </div>` : ""}
+        ${processing || ready ? "" : `
+          <div class="assistant-compose">
+            <input id="assistantReply" type="text" placeholder="${escapeHtml(placeholder)}" onkeydown="SkillNestApp.handleAssistantReplyKey(event)" />
+            <button class="btn primary small" type="button" onclick="SkillNestApp.sendAssistantReply()">Send</button>
+          </div>
+        `}
+      </section>
+    `;
+  }
+
+  function nav(active, isLoggedIn, account) {
+    const accountCta = isLoggedIn
+      ? `<button class="btn secondary nav-cta" type="button" onclick="SkillNestApp.setRoute('profile')">${escapeHtml(account.username || "My Hatches")}</button>`
+      : `<button class="btn secondary nav-cta" type="button" onclick="SkillNestApp.setRoute('auth')">Sign up / Log in</button>`;
+
+    return `
+      <header class="topbar">
+        <nav class="nav" aria-label="Primary navigation">
+          <a class="brand" href="#home" aria-label="Hatch home">
+            <img class="brand-logo" src="assets/hatchlogo.png?v=2" alt="Hatch logo" />
+          </a>
+          <div class="nav-links">
+            <a href="#browse" class="${active === "browse" ? "active" : ""}">Hatches</a>
+            <a href="#operator" class="${active === "operator" ? "active" : ""}">Become a Hatcher</a>
+            <a href="#trust" class="secondary-link ${active === "trust" ? "active" : ""}">Trust</a>
+          </div>
+          <div class="nav-actions">
+            ${accountCta}
+          </div>
+        </nav>
+      </header>
+    `;
+  }
+
+  function taskPreviewMarkup(text, files = []) {
+    if (!text.trim() && !files.length) {
+      return `<div class="live-preview empty">Start typing, use voice input, or attach files to shape your Hatch.</div>`;
+    }
+
+    const brief = generateTaskBrief(text, files);
+    return `
+      <div class="live-preview show">
+        ${brief.ok ? taskBriefPreviewMarkup(brief) : `<p>${escapeHtml(brief.error)}</p>`}
+        ${files.length ? `<small>Attached: ${files.map((file) => escapeHtml(file.name || file)).join(", ")}</small>` : ""}
+      </div>
+    `;
+  }
+
+  function hero(draftText = "", files = []) {
+    return `
+      <section class="hero">
+        <div class="hero-inner">
+          <div class="hero-copy reveal">
+            <h1>What do you need help with?</h1>
+            <p class="hero-subtitle">Tell us everything.<br />Don’t worry about making it perfect.<br />Just explain your situation naturally, as if you were talking to a colleague.<br />The more context you give us, the better we can understand your project. Hatch will organize everything for you.</p>
+          </div>
+          <div class="task-box reveal">
+            <label for="taskPrompt">Project description</label>
+            <textarea id="taskPrompt" rows="6" placeholder="Explain what you’re trying to accomplish, what you already have, and what a good result would look like..." oninput="SkillNestApp.updateLiveTaskPreview()">${escapeHtml(draftText)}</textarea>
+            <div class="inline-error" id="taskPromptError">Describe the Hatch first, even with one short sentence.</div>
+            <div class="input-tools" aria-label="Task input options">
+              <button class="tool-button voice-button" id="voiceInputButton" type="button" onclick="SkillNestApp.toggleVoiceInput()">Voice input</button>
+              <button class="tool-button voice-control hidden" id="voicePauseButton" type="button" onclick="SkillNestApp.pauseVoiceInput()">Pause</button>
+              <button class="tool-button voice-control hidden" id="voiceStopButton" type="button" onclick="SkillNestApp.stopVoiceInput()">Stop</button>
+              <button class="tool-button voice-control hidden danger-tool" id="voiceDeleteButton" type="button" onclick="SkillNestApp.deleteVoiceTranscript()">Delete voice text</button>
+              <button class="tool-button" type="button" onclick="document.getElementById('taskFile').click()">Attach files</button>
+              <input id="taskFile" class="hidden-file" type="file" multiple onchange="SkillNestApp.handleTaskFiles(event)" />
+            </div>
+            <div class="voice-status show" id="voiceStatus" role="status">Your microphone is only used while recording.</div>
+            <div class="file-summary" id="fileSummary"></div>
+            <div class="file-preview-list" id="filePreviewList" data-file-preview></div>
+            <div class="hero-actions">
+              <button class="btn primary full" id="reviewTaskButton" type="button" onclick="SkillNestApp.startTaskFlow()">Continue</button>
+              <button class="btn secondary full" type="button" onclick="SkillNestApp.setRoute('browse')">Browse Hatches</button>
+            </div>
+            <div class="writing-prompts">
+              <strong>Helpful things to mention:</strong>
+              <span>What you’re trying to achieve</span>
+              <span>Your business or project</span>
+              <span>What you already have</span>
+              <span>What success looks like</span>
+              <span>Deadlines</span>
+              <span>References</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  function hatchLifecycleSection() {
+    const stages = [
+      ["Stage 1", "🥚", "New Hatch", "Business owners post a real business problem they would like AI to solve."],
+      ["Stage 2", "🛠", "Incubating", "A verified Hatcher develops and refines the solution."],
+      ["Stage 3", "🐣", "Hatched", "The completed solution is delivered and ready for the business to use."],
+    ];
+
+    return `
+      <section class="section lifecycle-section">
+        <div class="section-head centered-head">
+          <div>
+            <div class="section-label">Hatch lifecycle</div>
+            <h2>Every Great Solution Starts as a Hatch</h2>
+          </div>
+        </div>
+        <div class="lifecycle-timeline">
+          ${stages.map(([stage, icon, title, text]) => `
+            <article class="lifecycle-step reveal">
+              <span class="stage-label">${stage}</span>
+              <div class="stage-icon" aria-hidden="true">${icon}</div>
+              <h3>${title}</h3>
+              <p>${text}</p>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+    `;
+  }
+
+  function recentlyHatchedSection() {
+    return `
+      <section class="section hatched-section">
+        <div class="section-head">
+          <div>
+            <div class="section-label">Hatched Work</div>
+            <h2>Recently Hatched</h2>
+          </div>
+        </div>
+        <div class="hatched-grid">
+          ${hatchedWork.map((item) => `
+            <article class="hatched-card reveal">
+              <div class="card-top">
+                ${statusBadge(item.status)}
+                ${tag(item.category)}
+              </div>
+              <h3>${escapeHtml(item.title)}</h3>
+              <span class="hatched-label">Outputs</span>
+              <ul class="clean-list output-list">
+                ${item.outputs.map((output) => `<li>✓ ${escapeHtml(output)}</li>`).join("")}
+              </ul>
+              <div class="time-saved">
+                <span>Time saved</span>
+                <strong>${escapeHtml(item.timeSaved)}</strong>
+              </div>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+    `;
+  }
+
+  function taskCard(task, interactive = false) {
+    const status = statusInfo(task.status);
+    const isOpen = status.label === "New Hatch";
+    const category = task.category || task.industry;
+    const completion = task.estimatedCompletion || task.timeline;
+    const objective = task.objective || task.description;
+    return `
+      <article class="task-card status-${status.className}" data-task-id="${task.id}" data-level="${task.level}" data-industry="${escapeHtml(task.industry)}" data-search="${escapeHtml(`${task.title} ${task.business} ${task.industry} ${category} ${task.status}`)}" onclick="SkillNestApp.openTaskDetail('${task.id}')">
+        <div class="card-top">
+          <span class="level-ribbon">${task.level}</span>
+          ${statusBadge(task.status)}
+        </div>
+        <h3>${escapeHtml(task.title)}</h3>
+        <p class="task-objective">${escapeHtml(objective)}</p>
+        <strong class="task-budget">${escapeHtml(task.budget)}</strong>
+        <div class="task-meta-row">
+          ${tag(category)}
+          ${tag(completion)}
+        </div>
+        ${interactive ? `
+          <div class="task-actions" onclick="event.stopPropagation()">
+            <button class="btn secondary small save-action" type="button" onclick="SkillNestApp.saveMission('${task.id}', 'Saved')">Save Hatch</button>
+            <button class="btn primary small apply-action" type="button" ${isOpen ? `onclick="SkillNestApp.saveMission('${task.id}', 'Incubating')"` : "disabled"}>${isOpen ? "Apply" : status.label}</button>
+          </div>
+        ` : ""}
+      </article>
+    `;
+  }
+
+  function operatorCard(operator, compact = false) {
+    return `
+      <article class="operator-card ${compact ? "compact-operator" : ""}" onclick="SkillNestApp.openOperatorProfile('${operator.id}')">
+        <div class="operator-head">
+          <div class="avatar">${operator.initials}</div>
+          <div>
+            <h3>${escapeHtml(operator.name)}</h3>
+            <p>${escapeHtml(operator.level)}</p>
+          </div>
+        </div>
+        <div class="metric-grid">
+          <div><strong>${operator.completed}</strong><span>hatched</span></div>
+          <div><strong>${operator.rating}</strong><span>rating</span></div>
+          <div><strong>${operator.onTime}</strong><span>on-time</span></div>
+        </div>
+        <div class="tag-row">${operator.industries.map((item) => tag(item)).join("")}</div>
+        <p class="tools">Tools: ${operator.tools.join(", ")}</p>
+      </article>
+    `;
+  }
+
+  function recommendedOperators(industry = "") {
+    const recommended = [...operators]
+      .sort((a, b) => Number(b.industries.includes(industry)) - Number(a.industries.includes(industry)))
+      .slice(0, 3);
+
+    return `
+      <div class="recommendations">
+        <div class="card-title-row">
+          <h2>Recommended Hatchers</h2>
+          <span class="tag">Mock matches</span>
+        </div>
+        <div class="operator-grid">${recommended.map((operator) => operatorCard(operator, true)).join("")}</div>
+      </div>
+    `;
+  }
+
+  function modal(content) {
+    return `
+      <div class="modal-backdrop" onclick="SkillNestApp.closeModal()">
+        <section class="modal-panel" role="dialog" aria-modal="true" onclick="event.stopPropagation()">
+          <button class="modal-close" type="button" onclick="SkillNestApp.closeModal()">Close</button>
+          ${content}
+        </section>
+      </div>
+    `;
+  }
+
+  function taskDetail(task) {
+    const status = statusInfo(task.status);
+    const isOpen = status.label === "New Hatch";
+    const category = task.category || task.industry;
+    const completion = task.estimatedCompletion || task.timeline;
+    const files = Array.isArray(task.files) ? task.files : [];
+    const references = Array.isArray(task.references) ? task.references : [];
+    const detailObjective = task.objective || task.description || suggestedObjective(`${task.title || ""} ${task.description || ""}`, task.industry || task.business || "", category);
+    const introText = task.description && task.description !== detailObjective ? task.description : "";
+    return modal(`
+      <div class="detail-head">
+        <span class="level-ribbon">${task.level}</span>
+        ${statusBadge(task.status)}
+      </div>
+      <h1>${escapeHtml(task.title)}</h1>
+      <strong class="detail-budget">${escapeHtml(task.budget)}</strong>
+      ${introText ? `<p>${escapeHtml(introText)}</p>` : ""}
+      <div class="detail-grid">
+        <div><span>Business</span><strong>${escapeHtml(task.business)}</strong></div>
+        <div><span>Category</span><strong>${escapeHtml(category)}</strong></div>
+        <div><span>Estimated completion</span><strong>${escapeHtml(completion)}</strong></div>
+        <div><span>Level</span><strong>${escapeHtml(task.level)}</strong></div>
+      </div>
+      <h2>Client objective</h2>
+      <p>${escapeHtml(detailObjective)}</p>
+      <h2>Expected outputs</h2>
+      <ul class="clean-list">${task.deliverables.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      <h2>Files and references</h2>
+      ${files.length || references.length ? `
+        <div class="detail-file-list">
+          ${files.map((file) => `
+            <article>
+              <strong>${escapeHtml(file.name || file)}</strong>
+              <span>${escapeHtml(file.materialType || "File")} · ${escapeHtml(file.type || "file")}${file.size ? ` · ${Math.ceil(file.size / 1024)} KB` : ""}</span>
+            </article>
+          `).join("")}
+          ${references.filter((item) => !String(item || "").startsWith("Attached file:")).map((item) => `
+            <article>
+              <strong>${escapeHtml(item)}</strong>
+              <span>Reference note</span>
+            </article>
+          `).join("")}
+        </div>
+      ` : `<p class="muted-text">No files or references attached.</p>`}
+      <div class="task-actions modal-actions">
+        <button class="btn secondary full" type="button" onclick="SkillNestApp.saveMission('${task.id}', 'Saved'); SkillNestApp.closeModal();">Save Hatch</button>
+        <button class="btn primary full" type="button" ${isOpen ? `onclick="SkillNestApp.saveMission('${task.id}', 'Incubating'); SkillNestApp.closeModal();"` : "disabled"}>${isOpen ? "Apply to Hatch" : "Not currently open"}</button>
+      </div>
+    `);
+  }
+
+  function operatorDetail(operator) {
+    return modal(`
+      <div class="operator-head detail-operator-head">
+        <div class="avatar">${operator.initials}</div>
+        <div>
+          <h1>${escapeHtml(operator.name)}</h1>
+          <p>${escapeHtml(operator.level)}</p>
+        </div>
+      </div>
+      <p>${escapeHtml(operator.bio)}</p>
+      <div class="metric-grid">
+        <div><strong>${operator.completed}</strong><span>hatched</span></div>
+        <div><strong>${operator.rating}</strong><span>rating</span></div>
+        <div><strong>${operator.onTime}</strong><span>on-time</span></div>
+      </div>
+      <div class="tag-row">${operator.industries.map((item) => tag(item)).join("")}</div>
+      <div class="operator-tabs">
+        <button class="tab active" type="button" onclick="SkillNestApp.showOperatorTab(event, 'offers')">Offers</button>
+        <button class="tab" type="button" onclick="SkillNestApp.showOperatorTab(event, 'industries')">Industries</button>
+        <button class="tab" type="button" onclick="SkillNestApp.showOperatorTab(event, 'tools')">Tools</button>
+      </div>
+      <div class="tab-panel show" data-tab-panel="offers">
+        <div class="offer-list">
+          ${operator.offers.map((offer) => `
+            <article>
+              <strong>${escapeHtml(offer.title)}</strong>
+              <span>${escapeHtml(offer.industry)} · ${escapeHtml(offer.level)} · ${escapeHtml(offer.status)}</span>
+            </article>
+          `).join("")}
+        </div>
+      </div>
+      <div class="tab-panel" data-tab-panel="industries">
+        <div class="tag-row">${operator.industries.map((item) => tag(item)).join("")}</div>
+      </div>
+      <div class="tab-panel" data-tab-panel="tools">
+        <div class="tag-row">${operator.tools.map((item) => tag(item)).join("")}</div>
+      </div>
+    `);
+  }
+
+  function footer(isLoggedIn) {
+    const profileLink = isLoggedIn ? `<a href="#profile">My Hatches</a>` : `<a href="#auth">Sign up / Log in</a>`;
+    return `
+      <footer class="footer">
+        <div class="footer-inner">
+          <div>
+            <strong>Hatch</strong>
+            <p>AI-powered Hatches for real business work.</p>
+          </div>
+          <div class="footer-links">
+            <a href="#post-task">Post a Hatch</a>
+            <a href="#browse">Browse Hatches</a>
+            <a href="#operator">Become a Hatcher</a>
+            <a href="#trust">Trust</a>
+            ${profileLink}
+          </div>
+        </div>
+      </footer>
+    `;
+  }
+
+  return {
+    buildTaskBrief,
+    choiceField,
+    escapeHtml,
+    field,
+    footer,
+    assistantConversationMarkup,
+    fallbackAssistantMessage,
+    generateTaskBrief,
+    hero,
+    hatchLifecycleSection,
+    clarificationCardMarkup,
+    isLowQualityProjectInput,
+    isProjectReady,
+    recentlyHatchedSection,
+    modal,
+    nav,
+    nextClarification,
+    operatorCard,
+    operatorDetail,
+    recommendedOperators,
+    selectField,
+    statusBadge,
+    statusInfo,
+    tag,
+    taskCard,
+    taskDetail,
+    taskReviewBriefMarkup,
+    taskPreviewMarkup,
+    textAreaField,
+  };
+})();
