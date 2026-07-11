@@ -127,7 +127,7 @@ window.SkillNestData = {
       category: "Education",
       status: "New Hatch",
       description: "Create short replies for parents asking about pricing, scheduling, subjects, and trial sessions.",
-      deliverables: ["FAQ replies", "Inquiry templates", "Follow-up copy"],
+      deliverables: ["FAQ replies", "Enquiry templates", "Follow-up copy"],
     },
     {
       id: "real-estate-lead-hatch",
@@ -141,7 +141,7 @@ window.SkillNestData = {
       industry: "Real Estate",
       category: "Real Estate",
       status: "Hatched",
-      description: "Create a simple lead qualification workflow that sorts buyer and seller inquiries into clear next steps.",
+      description: "Create a simple lead qualification workflow that sorts buyer and seller enquiries into clear next steps.",
       deliverables: ["Lead form", "Qualification logic", "Follow-up templates"],
     },
     {

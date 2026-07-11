@@ -1218,7 +1218,7 @@ window.SkillNestComponents = (() => {
           </a>
           <div class="nav-links">
             <a href="#browse" class="${active === "browse" ? "active" : ""}">Hatches</a>
-            <a href="#verified-work" class="${active === "verified-work" ? "active" : ""}">Verified Work</a>
+            <a href="#verified-work" class="${active === "verified-work" ? "active" : ""}">Verified Results</a>
             <a href="#operator" class="${active === "operator" ? "active" : ""}">Become a Hatcher</a>
             <a href="#trust" class="secondary-link ${active === "trust" ? "active" : ""}">Trust</a>
           </div>
@@ -1452,7 +1452,7 @@ window.SkillNestComponents = (() => {
         <div class="section-head compact-head">
           <div>
             <div class="section-label">Recently completed</div>
-            <h2>Verified Work</h2>
+            <h2>Verified Results</h2>
           </div>
           <a class="btn secondary small" href="#verified-work">View all</a>
         </div>
@@ -1526,7 +1526,7 @@ window.SkillNestComponents = (() => {
       <div class="tag-row">${profile.skills.map((item) => tag(item)).join("")}</div>
       <h2>Common industries</h2>
       <div class="tag-row">${profile.industries.map((item) => tag(item)).join("")}</div>
-      <h2>Recent verified work</h2>
+      <h2>Recent verified results</h2>
       <div class="verified-work-list compact-work-list">
         ${recent.map((work) => `
           <article>
@@ -1745,7 +1745,7 @@ window.SkillNestComponents = (() => {
           <div class="footer-links">
             <a href="#post-task">Post a Hatch</a>
             <a href="#browse">Browse Hatches</a>
-            <a href="#verified-work">Verified Work</a>
+            <a href="#verified-work">Verified Results</a>
             <a href="#operator">Become a Hatcher</a>
             <a href="#trust">Trust</a>
             ${profileLink}

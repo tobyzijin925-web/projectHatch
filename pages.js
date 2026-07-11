@@ -115,7 +115,7 @@ window.SkillNestPages = (() => {
     return `
       <main>
         <section class="section page page-intro verified-work-intro">
-          <div class="section-label">Verified Work</div>
+          <div class="section-label">Verified Results</div>
           <h1>Completed Hatches, verified delivery.</h1>
           <p class="section-kicker">A simple record of finished work, who completed it, what was delivered, and how the task performed.</p>
         </section>
@@ -244,7 +244,7 @@ window.SkillNestPages = (() => {
               ${C.field("Email", "operatorEmail", "you@example.com", "email", { value: account.email || "" })}
               ${C.choiceField("Background", "background", ["Student", "Admin assistant", "Designer", "Marketer", "Developer", "Business owner"], "Other background")}
               ${C.choiceField("Tools you use", "tools", ["ChatGPT", "Claude", "Canva", "Notion", "Zapier", "Google Sheets", "Cursor", "Midjourney"], "Other tools")}
-              ${C.choiceField("Industries you understand", "industries", ["Restaurants", "E-commerce", "Local services", "Real estate", "Education", "Health & wellness"], "Other industry")}
+              ${C.choiceField("Industries you understand", "industries", ["Restaurants", "E-commerce", "Local Services", "Real Estate", "Education", "Health & wellness"], "Other industry")}
               ${C.choiceField("Example Hatches you can complete", "exampleTasks", ["Social posts", "Product descriptions", "Simple websites", "Customer reply templates", "Menus/flyers", "Spreadsheet cleanup"], "Other Hatches")}
             </div>
             <button class="btn primary full" type="submit">Apply</button>
