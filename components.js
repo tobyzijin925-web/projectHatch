@@ -1743,6 +1743,7 @@ window.SkillNestComponents = (() => {
             <p>AI-powered Hatches for real business work.</p>
           </div>
           <div class="footer-links">
+            <button class="dark-mode-toggle" type="button" onclick="SkillNestApp.toggleDarkMode()" aria-pressed="${document.documentElement.classList.contains("dark-mode")}">${document.documentElement.classList.contains("dark-mode") ? "Light mode" : "Dark mode"}</button>
             <a href="#post-task">Post a Hatch</a>
             <a href="#browse">Browse Hatches</a>
             <a href="#verified-work">Verified Work</a>

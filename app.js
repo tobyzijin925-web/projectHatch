@@ -18,6 +18,18 @@ window.SkillNestApp = (() => {
     window.location.hash = route;
   }
 
+  function applyDarkModePreference() {
+    const isDark = localStorage.getItem("hatchDarkMode") === "true";
+    document.documentElement.classList.toggle("dark-mode", isDark);
+  }
+
+  function toggleDarkMode() {
+    const isDark = !document.documentElement.classList.contains("dark-mode");
+    document.documentElement.classList.toggle("dark-mode", isDark);
+    localStorage.setItem("hatchDarkMode", String(isDark));
+    render();
+  }
+
   function readJson(key, fallback) {
     try {
       return JSON.parse(localStorage.getItem(key)) || fallback;
@@ -3351,6 +3363,7 @@ window.SkillNestApp = (() => {
   window.addEventListener("hashchange", render);
 
   return {
+    applyDarkModePreference,
     applyTaskFilters,
     answerClarification,
     clearTaskDraft,
@@ -3405,6 +3418,7 @@ window.SkillNestApp = (() => {
     rewriteSection,
     stopVoiceInput,
     toggleChoice,
+    toggleDarkMode,
     toggleFinalEditList,
     toggleVoiceInput,
     updateDraftFileLabel,
@@ -3416,5 +3430,6 @@ window.SkillNestApp = (() => {
   };
 })();
 
+SkillNestApp.applyDarkModePreference();
 SkillNestApp.render();
 window.testDeepSeekConnection = SkillNestApp.testDeepSeekConnection;
