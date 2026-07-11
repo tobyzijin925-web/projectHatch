@@ -3184,32 +3184,131 @@ window.SkillNestApp = (() => {
     if (recommendations) recommendations.innerHTML = C.recommendedOperators(industry);
   }
 
+  function getOperatorWizard() {
+    return {
+      step: localStorage.getItem("hatchOperatorStep") || "account",
+      draft: readJson("hatchOperatorDraft", {}),
+    };
+  }
+
+  function saveOperatorWizard(step, draft) {
+    localStorage.setItem("hatchOperatorStep", step);
+    localStorage.setItem("hatchOperatorDraft", JSON.stringify(draft));
+  }
+
+  function collectChoices(form, name) {
+    const values = [...form.querySelectorAll(`[name="${name}"].selected`)].map((button) => button.value);
+    const other = form.querySelector(`[name="${name}Other"]`)?.value.trim();
+    if (other && !values.includes(other)) values.push(other);
+    return values;
+  }
+
+  function operatorAccountStep(event) {
+    event.preventDefault();
+    const email = document.getElementById("operatorAuthEmail").value.trim();
+    const password = document.getElementById("operatorAuthPassword").value;
+    const existing = getAccount();
+    const sameEmail = existing.email === email;
+    const account = {
+      username: sameEmail && existing.username ? existing.username : email.split("@")[0],
+      name: sameEmail ? existing.name || "" : "",
+      email,
+      password,
+      role: sameEmail && existing.role ? existing.role : "Hatcher",
+      provider: "Email",
+      joinedAt: sameEmail && existing.joinedAt ? existing.joinedAt : new Date().toISOString(),
+    };
+    localStorage.setItem("skillnestAccount", JSON.stringify(account));
+    localStorage.setItem("skillnestLoggedIn", "true");
+    saveOperatorWizard("about", getOperatorWizard().draft);
+    render();
+  }
+
+  function operatorGoogleSignup() {
+    const existing = getAccount();
+    const account = existing.email
+      ? { ...existing, provider: "Google (simulated)" }
+      : {
+        username: "google_hatcher",
+        name: "",
+        email: "hatcher@gmail.com",
+        password: "",
+        role: "Hatcher",
+        provider: "Google (simulated)",
+        joinedAt: new Date().toISOString(),
+      };
+    localStorage.setItem("skillnestAccount", JSON.stringify(account));
+    localStorage.setItem("skillnestLoggedIn", "true");
+    saveOperatorWizard("about", getOperatorWizard().draft);
+    render();
+  }
+
+  function operatorContinueLoggedIn() {
+    saveOperatorWizard("about", getOperatorWizard().draft);
+    render();
+  }
+
+  function operatorStepNext(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const draft = {
+      ...getOperatorWizard().draft,
+      name: document.getElementById("operatorName")?.value.trim() || "",
+      background: collectChoices(form, "background"),
+      tools: collectChoices(form, "tools"),
+    };
+    saveOperatorWizard("focus", draft);
+    render();
+  }
+
+  function operatorStepBack(event) {
+    const form = event.target.closest("form");
+    const { step, draft } = getOperatorWizard();
+    if (step === "focus") {
+      saveOperatorWizard("about", {
+        ...draft,
+        industries: collectChoices(form, "industries"),
+        exampleTasks: collectChoices(form, "exampleTasks"),
+      });
+    } else {
+      saveOperatorWizard("account", {
+        ...draft,
+        name: document.getElementById("operatorName")?.value.trim() || draft.name || "",
+        background: collectChoices(form, "background"),
+        tools: collectChoices(form, "tools"),
+      });
+    }
+    render();
+  }
+
   function submitOperator(event) {
     event.preventDefault();
     const form = event.currentTarget;
-    const selectedValues = (name) => {
-      const selected = [...form.querySelectorAll(`[name="${name}"].selected`)].map((button) => button.value);
-      const other = form.querySelector(`[name="${name}Other"]`)?.value.trim();
-      return other ? [...selected, other].join(", ") : selected.join(", ");
-    };
+    const account = getAccount();
+    const { draft } = getOperatorWizard();
     const application = {
       id: `operator-${Date.now()}`,
-      name: document.getElementById("operatorName").value.trim(),
-      email: document.getElementById("operatorEmail").value.trim(),
-      background: selectedValues("background"),
-      tools: selectedValues("tools"),
-      industries: selectedValues("industries"),
-      exampleTasks: selectedValues("exampleTasks"),
+      name: draft.name || account.name || account.username || "",
+      email: account.email || "",
+      background: (draft.background || []).join(", "),
+      tools: (draft.tools || []).join(", "),
+      industries: collectChoices(form, "industries").join(", "),
+      exampleTasks: collectChoices(form, "exampleTasks").join(", "),
       status: "Submitted",
       submittedAt: new Date().toISOString(),
     };
+    if (draft.name && !account.name) {
+      localStorage.setItem("skillnestAccount", JSON.stringify({ ...account, name: draft.name }));
+    }
     saveListItem("skillnestOperatorApplications", application, "id");
-    document.getElementById("operatorSuccess")?.classList.add("show");
-    form.reset();
-    form.querySelectorAll(".choice-pill").forEach((button) => {
-      button.classList.remove("selected");
-      button.setAttribute("aria-pressed", "false");
-    });
+    saveOperatorWizard("done", {});
+    render();
+  }
+
+  function finishOperatorWizard(route) {
+    localStorage.removeItem("hatchOperatorStep");
+    localStorage.removeItem("hatchOperatorDraft");
+    setRoute(route);
   }
 
   function openTaskDetail(taskId) {
@@ -3326,7 +3425,7 @@ window.SkillNestApp = (() => {
       : route === "task-review"
         ? Pages.taskReviewPage(draftTask, files, generatedBrief, getAssistantMessages())
       : route === "operator"
-        ? Pages.operatorPage(account)
+        ? Pages.operatorPage(account, getOperatorWizard(), isLoggedIn())
       : route === "how-it-works"
         ? Pages.howItWorksPage()
       : route === "trust"
@@ -3374,6 +3473,12 @@ window.SkillNestApp = (() => {
     handleAssistantReplyKey,
     handleAssistantTurn,
     logout,
+    finishOperatorWizard,
+    operatorAccountStep,
+    operatorContinueLoggedIn,
+    operatorGoogleSignup,
+    operatorStepBack,
+    operatorStepNext,
     openOperatorProfile,
     openTaskDetail,
     openVerifiedHatcherProfile,
