@@ -2907,7 +2907,7 @@ dd {
 .choice-field {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
   grid-column: 1 / -1;
   min-width: 0;
   margin: 0;
@@ -2917,6 +2917,7 @@ dd {
 
 .choice-field legend {
   padding: 0;
+  margin-bottom: 12px;
   color: #344054;
   font-size: 0.92rem;
   font-weight: 800;
@@ -2925,7 +2926,7 @@ dd {
 .choice-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px 12px;
 }
 
 .choice-other-row {
