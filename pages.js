@@ -1,5 +1,5 @@
 window.SkillNestPages = (() => {
-  const { tasks, operators, levels } = window.SkillNestData;
+  const { tasks, operators, levels, completedHatches } = window.SkillNestData;
   const C = window.SkillNestComponents;
 
   function socialAuthButtons() {
@@ -16,6 +16,7 @@ window.SkillNestPages = (() => {
     return `
       <main>
         ${C.hero(draftText, files)}
+        ${C.recentVerifiedWorkSection()}
         ${C.hatchLifecycleSection()}
         ${C.recentlyHatchedSection()}
       </main>
@@ -24,26 +25,31 @@ window.SkillNestPages = (() => {
 
   function taskReviewPage(draftTask, files, generatedBrief, assistantMessages = []) {
     const brief = generatedBrief || C.generateTaskBrief(draftTask, files);
-    const ready = Number(localStorage.getItem("hatchActiveSectionIndex") || 0) >= 9;
+    const readiness = String(brief.readiness || brief.stage || "").toLowerCase();
+    const missingInfo = Array.isArray(brief.missingInfo) ? brief.missingInfo.filter(Boolean) : [];
+    const ready = Number(localStorage.getItem("hatchActiveSectionIndex") || 0) >= 9
+      || /ready_to_post|ready to post/.test(readiness)
+      || brief.canSubmit === true
+      || (brief.isValidProject && missingInfo.length === 0);
     const intakeMode = localStorage.getItem("hatchAiIntakeMode");
     const intakeLabel = intakeMode === "connected"
       ? "AI intake connected"
       : intakeMode === "local-validation"
         ? "Still shaping the idea"
         : "Local intake fallback";
+    const aiError = localStorage.getItem("hatchAiLastError") || "";
     return `
       <main class="section page">
         <div class="review-layout project-builder-layout">
           <div class="form-copy">
-            <div class="section-label">Hatch Intake</div>
-            <h1>I’ll organize everything.</h1>
-            <p>Explain naturally. Hatch will shape the brief and walk you through one piece at a time.</p>
-            <span class="intake-mode">${intakeLabel}</span>
+            <h1>Describe it naturally.</h1>
+            <p>Hatch will organize the brief while you talk through the work.</p>
+            <span class="intake-mode ${aiError ? "warning" : ""}">${intakeLabel}${aiError ? ` · ${C.escapeHtml(aiError)}` : ""}</span>
             ${C.assistantConversationMarkup(assistantMessages, brief)}
           </div>
           <section class="review-card">
             <div class="card-title-row">
-              <h2>Progress</h2>
+              <h2>Live understanding</h2>
               <span class="tag">${ready ? "Ready" : "In progress"}</span>
             </div>
             ${C.taskReviewBriefMarkup(brief, files)}
@@ -99,6 +105,24 @@ window.SkillNestPages = (() => {
             ${allTasks.map((task) => C.taskCard(task, true)).join("")}
           </div>
           <div class="empty-state" id="emptyTasks">No Hatches match those filters.</div>
+        </section>
+      </main>
+    `;
+  }
+
+  function verifiedWorkPage() {
+    const orderedWork = [...completedHatches].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+    return `
+      <main>
+        <section class="section page page-intro verified-work-intro">
+          <div class="section-label">Verified Work</div>
+          <h1>Completed Hatches, verified delivery.</h1>
+          <p class="section-kicker">A simple record of finished work, who completed it, what was delivered, and how the task performed.</p>
+        </section>
+        <section class="section page verified-work-page">
+          <div class="verified-work-feed">
+            ${orderedWork.map((work) => C.verifiedWorkCard(work)).join("")}
+          </div>
         </section>
       </main>
     `;
@@ -404,5 +428,6 @@ window.SkillNestPages = (() => {
     signupPage,
     taskReviewPage,
     trustPage,
+    verifiedWorkPage,
   };
 })();

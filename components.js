@@ -1,5 +1,5 @@
 window.SkillNestComponents = (() => {
-  const { taskChips, operators, hatchedWork } = window.SkillNestData;
+  const { taskChips, operators, hatchedWork, completedHatches, hatcherProfiles } = window.SkillNestData;
 
   function escapeHtml(value = "") {
     return String(value)
@@ -11,6 +11,24 @@ window.SkillNestComponents = (() => {
 
   function tag(text, variant = "") {
     return `<span class="tag ${variant}">${escapeHtml(text)}</span>`;
+  }
+
+  function hatcherForWork(work) {
+    return hatcherProfiles.find((profile) => profile.id === work.hatcherId);
+  }
+
+  function visibleHatcherName(work) {
+    const profile = hatcherForWork(work);
+    if (!work.showProfile || !profile) return "Private Hatcher";
+    return profile.name;
+  }
+
+  function visibleEarnings(work) {
+    return work.showEarnings ? work.amountEarned : "Earnings hidden";
+  }
+
+  function visibleCompletionTime(work) {
+    return work.showCompletionTime ? work.completionTime : "Completion time hidden";
   }
 
   function statusInfo(status = "") {
@@ -97,6 +115,16 @@ window.SkillNestComponents = (() => {
     return firstSentence.length > 76 ? `${firstSentence.slice(0, 73)}...` : firstSentence;
   }
 
+  function cleanSentence(text = "") {
+    const cleaned = String(text || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .replace(/^(i\s+want\s+to|i\s+need\s+to|i\s+need|can\s+you|please)\s+/i, "")
+      .replace(/\.$/, "");
+    if (!cleaned) return "";
+    return `${cleaned.charAt(0).toUpperCase()}${cleaned.slice(1)}.`;
+  }
+
   function normalizeTaskText(text = "") {
     return String(text || "")
       .replace(/\bcafé\b/gi, "cafe")
@@ -117,21 +145,24 @@ window.SkillNestComponents = (() => {
       "build", "create", "design", "write", "rewrite", "organize", "automate", "setup", "set up",
       "make", "fix", "update", "content", "website", "menu", "post", "posts", "social", "caption",
       "captions", "instagram", "product", "descriptions", "customer", "reply", "template", "spreadsheet",
-      "data", "chatbot", "workflow",
+      "data", "chatbot", "workflow", "linkedin", "newsletter", "deck", "pitch", "presentation", "proposal",
+      "email", "cold email", "hiring", "blog", "flyer", "research", "competitor", "competitors", "resume",
+      "notion", "feedback", "summarize", "summary", "calendar", "plan", "business plan", "sop",
     ];
     const contextSignals = ["cafe", "restaurant", "salon", "store", "shop", "business", "client", "customer", "product", "menu"];
+    const hasTaskSignal = taskSignals.some((signal) => clean.includes(signal));
 
-    if (clean.length < 12) return true;
-    if (words.length >= 4 && taskSignals.some((signal) => clean.includes(signal)) && contextSignals.some((signal) => clean.includes(signal))) return false;
-    if (words.length <= 3 && !taskSignals.some((signal) => clean.includes(signal))) return true;
+    if (clean.length < 12 && !hasTaskSignal) return true;
+    if (words.length >= 4 && hasTaskSignal && contextSignals.some((signal) => clean.includes(signal))) return false;
+    if (words.length <= 3 && !hasTaskSignal) return true;
     if (words.every((word) => greetings.has(word))) return true;
     if (vaguePhrases.includes(clean)) return true;
     if (words.length >= 3 && uniqueWords.size <= 2) return true;
     if (/^(.)\1{5,}$/.test(clean.replace(/\s/g, ""))) return true;
     if (!/[aeiou]/.test(clean) && clean.length > 8) return true;
-    if (/^[a-z]{8,}$/.test(clean) && uniqueWords.size === 1 && !taskSignals.some((signal) => clean.includes(signal))) return true;
+    if (/^[a-z]{8,}$/.test(clean) && uniqueWords.size === 1 && !hasTaskSignal) return true;
 
-    return !taskSignals.some((signal) => clean.includes(signal)) && words.length < 6;
+    return !hasTaskSignal && words.length < 6;
   }
 
   function detectIndustry(lower) {
@@ -145,17 +176,21 @@ window.SkillNestComponents = (() => {
 
   function detectCategory(lower) {
     if (lower.includes("website") || lower.includes("landing page")) return "Website";
-    if (lower.includes("caption") || lower.includes("instagram") || lower.includes("content") || lower.includes("reel")) return "Content";
+    if (lower.includes("caption") || lower.includes("instagram") || lower.includes("linkedin") || lower.includes("newsletter") || lower.includes("blog") || lower.includes("content") || lower.includes("reel")) return "Content";
+    if (lower.includes("deck") || lower.includes("presentation") || lower.includes("proposal")) return "Presentation";
+    if (lower.includes("business plan") || lower.includes("sop")) return "Writing";
+    if (lower.includes("research") || lower.includes("competitor")) return "Research";
+    if (lower.includes("email") || lower.includes("resume") || lower.includes("hiring post")) return "Writing";
     if (lower.includes("chatbot") || lower.includes("reply") || lower.includes("faq")) return "Customer Support";
-    if (lower.includes("automate") || lower.includes("workflow") || lower.includes("sheet") || lower.includes("invoice")) return "Operations";
-    if (lower.includes("menu") || lower.includes("canva") || lower.includes("design")) return "Design";
+    if (lower.includes("automate") || lower.includes("workflow") || lower.includes("sheet") || lower.includes("spreadsheet") || lower.includes("notion") || lower.includes("invoice")) return "Operations";
+    if (lower.includes("menu") || lower.includes("flyer") || lower.includes("canva") || lower.includes("design")) return "Design";
     return "General";
   }
 
   function suggestedLevel(lower) {
     if (lower.includes("strategy") || lower.includes("full system") || lower.includes("complex")) return "L4";
     if (lower.includes("automate") || lower.includes("workflow") || lower.includes("chatbot") || lower.includes("zapier")) return "L3";
-    if (lower.includes("website") || lower.includes("menu") || lower.includes("calendar") || lower.includes("template")) return "L2";
+    if (lower.includes("website") || lower.includes("menu") || lower.includes("calendar") || lower.includes("template") || lower.includes("deck") || lower.includes("presentation") || lower.includes("research")) return "L2";
     return "L1";
   }
 
@@ -203,6 +238,16 @@ window.SkillNestComponents = (() => {
 
   function suggestedTitle(cleanText, industry, category) {
     const lower = cleanText.toLowerCase();
+    if (lower.includes("linkedin")) return sentenceTitle(cleanText, "Write a LinkedIn post");
+    if (lower.includes("instagram")) return sentenceTitle(cleanText, "Create Instagram content");
+    if (lower.includes("pitch deck")) return sentenceTitle(cleanText, "Create a pitch deck");
+    if (lower.includes("presentation")) return sentenceTitle(cleanText, "Prepare a presentation");
+    if (lower.includes("newsletter")) return sentenceTitle(cleanText, "Write a newsletter");
+    if (lower.includes("cold email")) return sentenceTitle(cleanText, "Draft a cold email");
+    if (lower.includes("proposal")) return sentenceTitle(cleanText, "Write a client proposal");
+    if (lower.includes("business plan")) return sentenceTitle(cleanText, "Draft a business plan");
+    if (lower.includes("research") || lower.includes("competitor")) return sentenceTitle(cleanText, "Research competitors");
+    if (lower.includes("spreadsheet") || lower.includes("sheet")) return sentenceTitle(cleanText, "Organize a spreadsheet");
     if (category === "Content" && lower.includes("instagram") && (lower.includes("cafe") || lower.includes("restaurant"))) return "Instagram content for a cafe";
     if (industry !== "General business" && category !== "General") return `${industry} ${category}`.trim();
     if (category !== "General") return category;
@@ -222,11 +267,39 @@ window.SkillNestComponents = (() => {
     }
     if (category === "Customer Support") return "Create useful customer reply material so common questions can be answered faster and more consistently.";
     if (category === "Operations") return "Organize the current workflow into a simpler process that saves time and reduces repeated admin work.";
+    if (category === "Presentation") return "Create a clear presentation that explains the idea, message, or proposal in a polished structure.";
+    if (category === "Research") return "Research the topic and organize the findings into clear, useful notes the client can act on.";
+    if (category === "Writing") return "Write polished copy that fits the intended audience, purpose, and tone.";
+    if (category === "Content") return "Create usable content that communicates the message clearly and gives the audience an obvious next step.";
     if (category === "Design" && industry === "Restaurant") return "Create a clean restaurant menu that makes items, prices, and specials easy for customers to understand.";
     if (category === "Design") return "Create a clean, usable design asset that is ready for the business to edit or publish.";
     if (industry === "E-commerce") return "Improve product content so customers can understand, compare, and buy items more easily.";
     if (industry !== "General business") return `Turn the ${industry.toLowerCase()} request into a clear, usable result for the client.`;
     return cleanSentence(cleanText).replace(/\.$/, "") || "Create a clear, usable result for the client.";
+  }
+
+  function fallbackScope(cleanText, category) {
+    const lower = cleanText.toLowerCase();
+    if (lower.includes("linkedin")) return ["Understand the announcement topic", "Draft one polished LinkedIn post", "Suggest two opening hooks", "Include a clear call to action", "Match the intended tone"];
+    if (lower.includes("instagram")) return ["Clarify the content goal", "Create post ideas or captions", "Organize content into a usable format", "Suggest simple CTA or hashtag notes"];
+    if (category === "Presentation") return ["Clarify the audience and purpose", "Create a slide-by-slide structure", "Draft key talking points", "Suggest stronger section headings"];
+    if (category === "Research") return ["Define the research questions", "Collect relevant findings", "Summarize patterns", "Organize insights into clear notes"];
+    if (category === "Operations") return ["Review the current process or data", "Organize the information into clear sections", "Clean up inconsistencies", "Prepare simple handoff notes"];
+    if (category === "Website") return ["Structure the page", "Write clear page copy", "Create calls to action", "Organize service or offer sections"];
+    if (category === "Design") return ["Clarify the required format", "Organize the content", "Improve readability", "Prepare editable design notes"];
+    return ["Clarify the intended audience", "Create the first polished version", "Organize the work into a usable format", "Prepare concise handoff notes"];
+  }
+
+  function fallbackDeliverables(cleanText, category) {
+    const lower = cleanText.toLowerCase();
+    if (lower.includes("linkedin")) return ["One final LinkedIn post", "Two optional opening hooks", "Suggested call to action", "Optional hashtags"];
+    if (lower.includes("instagram")) return ["Instagram post ideas or captions", "Suggested content angles", "CTA or hashtag notes"];
+    if (category === "Presentation") return ["Presentation outline", "Slide-by-slide structure", "Key talking points", "Suggested title and section headings"];
+    if (category === "Research") return ["Research summary", "Key findings", "Competitor or source notes", "Recommended next steps"];
+    if (category === "Operations") return ["Organized spreadsheet or workflow notes", "Cleaned structure", "Duplicate or issue notes", "Update instructions"];
+    if (category === "Website") return ["Homepage copy", "Page section structure", "CTA copy", "Mobile-friendly layout notes"];
+    if (category === "Design") return ["Editable design copy or layout notes", "Organized sections", "Final handoff notes"];
+    return ["Polished first version", "Structured handoff notes", "Optional revisions list"];
   }
 
   function generateTaskBrief(inputText, files = []) {
@@ -253,11 +326,7 @@ window.SkillNestComponents = (() => {
 
     const deliverables = isInstagramCafe
       ? ["Instagram post ideas", "Captions or copy", "Simple posting plan"]
-      : [
-          category === "Content" ? "Draft content set" : "First usable version",
-          category === "Operations" ? "Workflow notes" : "Clear delivery notes",
-          category === "Website" ? "Mobile-friendly page structure" : "Editable final files or templates",
-        ];
+      : fallbackDeliverables(cleanText, category);
 
     if (files.length) deliverables.push("Review attached reference files");
 
@@ -276,6 +345,7 @@ window.SkillNestComponents = (() => {
       budgetKnown: Boolean(budget),
       timelineKnown: Boolean(timeline),
       deliverables,
+      scope: fallbackScope(cleanText, category),
       knownRequirements: [
         cleanText,
         files.length ? "Attached files should be reviewed before work begins." : "",
@@ -318,7 +388,8 @@ window.SkillNestComponents = (() => {
     if (brief?.isProcessing) return "Understanding Your Project";
     if (brief?.stage === "invalid_input" || brief?.isValidProject === false || Number(brief?.confidence || 0) < 40) return "Needs More Context";
     if (brief?.stage === "ready_to_post") return "Ready to Post";
-    const allowed = ["Needs More Context", "Understanding Your Project", "Almost Ready", "Ready to Post"];
+    if (brief?.readiness === "shaping") return "Shaping the Hatch";
+    const allowed = ["Needs More Context", "Understanding Your Project", "Shaping the Hatch", "Almost Ready", "Ready to Post"];
     if (allowed.includes(brief?.readiness)) return brief.readiness;
     const missing = brief?.missingInfo?.length || 0;
     if (!brief?.ok) return "Needs More Context";
@@ -506,15 +577,15 @@ window.SkillNestComponents = (() => {
   }
 
   const builderSections = [
-    { id: "title", label: "Project", short: "Project", prompt: "Here’s how I’d write this.", optional: false },
-    { id: "businessType", label: "Business", short: "Business", prompt: "I think this is who the work is for.", optional: false },
-    { id: "summary", label: "Goal", short: "Goal", prompt: "Here’s how I’d summarize the goal.", multiline: true, optional: false },
-    { id: "deliverables", label: "Deliverables", short: "Deliverables", prompt: "Here’s what I think the Hatcher should create.", multiline: true, list: true, optional: false },
-    { id: "suggestedTimeline", label: "Timeline", short: "Timeline", prompt: "Here’s the timeline I’d use for now.", optional: false },
-    { id: "suggestedBudget", label: "Budget", short: "Budget", prompt: "Here’s the budget range I’d suggest.", optional: false },
-    { id: "industry", label: "Industry", short: "Industry", prompt: "Here’s the category I’d use for matching.", optional: false },
-    { id: "references", label: "References / files", short: "References", prompt: "Here’s what I found for references or files.", multiline: true, list: true, optional: true },
-    { id: "constraints", label: "Constraints", short: "Constraints", prompt: "Here’s what I’d note so the work stays on track.", multiline: true, list: true, optional: true },
+    { id: "title", label: "I understand what you need", short: "Need is understood", prompt: "Here’s how I’d write this.", optional: false },
+    { id: "businessType", label: "I know who it is for", short: "Who it is for", prompt: "I think this is who the work is for.", optional: false },
+    { id: "summary", label: "I understand the outcome", short: "Outcome is clear", prompt: "Here’s how I’d summarize the goal.", multiline: true, optional: false },
+    { id: "deliverables", label: "I know what should be delivered", short: "Outputs are clear", prompt: "Here’s what I think the Hatcher should create.", multiline: true, list: true, optional: false },
+    { id: "suggestedTimeline", label: "Timeline is clear", short: "Timeline is clear", prompt: "Here’s the timeline I’d use for now.", optional: false },
+    { id: "suggestedBudget", label: "Budget is clear", short: "Budget is clear", prompt: "Here’s the budget range I’d suggest.", optional: false },
+    { id: "industry", label: "Context is clear", short: "Context is clear", prompt: "Here’s the category I’d use for matching.", optional: false },
+    { id: "references", label: "Source material is clear", short: "Source material", prompt: "Here’s what I found for references or files.", multiline: true, list: true, optional: true },
+    { id: "constraints", label: "Ready for a Hatcher", short: "Ready for Hatcher", prompt: "Here’s what I’d note so the work stays on track.", multiline: true, list: true, optional: true },
   ];
 
   function readLocalJson(key, fallback) {
@@ -547,6 +618,163 @@ window.SkillNestComponents = (() => {
     const value = sectionValue(brief, section.id);
     if (Array.isArray(value)) return value.filter(Boolean).length > 0;
     return Boolean(String(value || "").trim());
+  }
+
+  function requiredBriefFieldsComplete(brief = {}) {
+    const hasText = (value) => String(value || "").trim().length > 0;
+    const hasList = (value) => Array.isArray(value) && value.filter(Boolean).length > 0;
+    return Boolean(
+      hasText(brief.title)
+      && hasText(brief.summary)
+      && (hasText(brief.clientContext) || hasText(brief.businessType) || hasText(brief.industry))
+      && (hasList(brief.scope) || hasList(brief.deliverables))
+      && hasList(brief.deliverables)
+      && hasText(brief.suggestedBudget)
+      && hasText(brief.suggestedTimeline)
+    );
+  }
+
+  function compactStatus(value, options = {}) {
+    if (options.optional && !String(value || "").trim() && !(Array.isArray(value) && value.length)) return "Optional";
+    if (options.flexible && /flexible|not sure|no references|none/i.test(String(value || ""))) return "Flexible";
+    if (Array.isArray(value)) return value.filter(Boolean).length ? "Understood" : options.optional ? "Optional" : "Still missing";
+    return String(value || "").trim() ? "Understood" : options.optional ? "Optional" : "Still missing";
+  }
+
+  function understandingSummaryItems(brief = {}, files = []) {
+    const ai = brief.understandingSummary || {};
+    const deliverableText = Array.isArray(brief.deliverables) && brief.deliverables.length
+      ? brief.deliverables.slice(0, 2).join(", ")
+      : "";
+    const fileText = files.length
+      ? `${files.length} file${files.length === 1 ? "" : "s"} attached`
+      : Array.isArray(brief.references) && brief.references.length ? brief.references.slice(0, 2).join(", ") : "";
+    return [
+      { label: "Project", value: ai.project || brief.title || "", status: compactStatus(ai.project || brief.title) },
+      { label: "Audience", value: ai.audience || brief.audience || "", status: compactStatus(ai.audience || brief.audience) },
+      { label: "Goal", value: ai.goal || brief.summary || "", status: compactStatus(ai.goal || brief.summary) },
+      { label: "Deliverables", value: ai.deliverables || deliverableText, status: compactStatus(ai.deliverables || brief.deliverables) },
+      { label: "Timeline", value: ai.timeline || brief.suggestedTimeline || "", status: compactStatus(ai.timeline || brief.suggestedTimeline, { flexible: true }) },
+      { label: "Budget", value: ai.budget || brief.suggestedBudget || "", status: compactStatus(ai.budget || brief.suggestedBudget, { flexible: true }) },
+      { label: "Files / references", value: ai.files || fileText, status: compactStatus(ai.files || fileText, { optional: true, flexible: true }) },
+    ];
+  }
+
+  function liveUnderstandingCard(brief = {}, files = []) {
+    const items = understandingSummaryItems(brief, files);
+    return `
+      <div class="compact-insight-card live-understanding-card">
+        <div class="insight-card-head">
+          <h3>Here’s what Hatch understands so far.</h3>
+          <p>Compact view only. Hatch still handles the writing.</p>
+        </div>
+        <div class="understanding-summary-list">
+          ${items.map((item) => `
+            <article>
+              <span>${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(item.value || "Not added yet")}</strong>
+              <em class="${item.status.toLowerCase().replace(/\s+/g, "-")}">${escapeHtml(item.status)}</em>
+            </article>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  function qualityLabel(value) {
+    const normalized = String(value || "").toLowerCase().replace(/_/g, "-");
+    if (normalized.includes("strong")) return "Strong";
+    if (normalized.includes("needs")) return "Needs detail";
+    return "Good";
+  }
+
+  function localQualityCheck(brief = {}) {
+    const objective = String(brief.summary || "");
+    const title = String(brief.title || "");
+    const deliverables = Array.isArray(brief.deliverables) ? brief.deliverables.filter(Boolean) : [];
+    const hasTimelineBudget = Boolean(brief.suggestedTimeline && brief.suggestedBudget);
+    return {
+      clarity: objective.length > 60 && title.length > 18 ? "strong" : objective.length > 28 ? "good" : "needs_detail",
+      specificity: /content|website|video|spreadsheet|menu|post|automation|workflow|description/i.test(title + objective) ? "good" : "needs_detail",
+      deliverables: deliverables.length >= 3 ? "strong" : deliverables.length ? "good" : "needs_detail",
+      timeline_budget: hasTimelineBudget ? "good" : "needs_detail",
+    };
+  }
+
+  function qualityCheckCard(brief = {}) {
+    const check = { ...localQualityCheck(brief), ...(brief.qualityCheck || {}) };
+    const rows = [
+      ["Clarity", check.clarity],
+      ["Specificity", check.specificity],
+      ["Deliverables", check.deliverables],
+      ["Timeline / budget", check.timeline_budget || check.timelineBudget],
+    ];
+    const needsDetail = rows.some(([, value]) => qualityLabel(value) === "Needs detail");
+    return `
+      <div class="compact-insight-card quality-check-card">
+        <div class="insight-card-head">
+          <h3>${needsDetail ? "This is almost ready." : "This looks ready."}</h3>
+          <p>${needsDetail ? "One or two details could make this clearer." : "The brief has enough shape for a Hatcher to understand it."}</p>
+        </div>
+        <div class="quality-check-grid">
+          ${rows.map(([label, value]) => `
+            <article>
+              <span>${escapeHtml(label)}</span>
+              <strong class="${qualityLabel(value).toLowerCase().replace(/\s+/g, "-")}">${escapeHtml(qualityLabel(value))}</strong>
+            </article>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  function localHatcherQuestions(brief = {}, files = []) {
+    const questions = [];
+    if (!brief.audience) questions.push("Who is the main audience?");
+    if (!Array.isArray(brief.references) || !brief.references.length) questions.push("Do you have brand examples or source material?");
+    if (!files.length && (!brief.references || !brief.references.length)) questions.push("Should the Hatcher use any files, photos, menus, or links?");
+    if (!Array.isArray(brief.constraints) || !brief.constraints.length) questions.push("Should the tone be formal, friendly, or something else?");
+    if (!brief.suggestedTimeline || /flexible/i.test(brief.suggestedTimeline)) questions.push("Is the timeline flexible?");
+    if (!questions.length) questions.push("Should the final version be editable?", "Are there any details the Hatcher should avoid?");
+    return questions.slice(0, 4);
+  }
+
+  function hatcherQuestionsCard(brief = {}, files = []) {
+    const questions = Array.isArray(brief.hatcherQuestions) && brief.hatcherQuestions.length
+      ? brief.hatcherQuestions.slice(0, 4)
+      : localHatcherQuestions(brief, files);
+    return `
+      <div class="compact-insight-card hatcher-questions-card">
+        <div class="insight-card-head">
+          <h3>A Hatcher might still ask…</h3>
+          <p>You can answer these now or post anyway.</p>
+        </div>
+        <ul>
+          ${questions.map((question) => `<li>${escapeHtml(question)}</li>`).join("")}
+        </ul>
+        <div class="focused-actions compact-actions">
+          <button class="btn secondary small" type="button" onclick="SkillNestApp.continueChattingFromFinal()">Answer these now</button>
+          <button class="btn primary small" type="button" onclick="SkillNestApp.submitReviewedHatch()">Post anyway</button>
+          <button class="btn ghost small" type="button" onclick="SkillNestApp.saveHatchDraft()">Save draft</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function shouldShowFinalReview(brief = {}, activeIndex = 0) {
+    if (localStorage.getItem("hatchFinalReviewDismissed") === "true") return false;
+    const readiness = String(brief.readiness || brief.stage || "").toLowerCase();
+    const missingInfo = Array.isArray(brief.missingInfo) ? brief.missingInfo.filter(Boolean) : [];
+    const message = String(brief.assistantMessage || "");
+    return Boolean(
+      activeIndex >= builderSections.length
+      || /ready_to_post|ready to post/.test(readiness)
+      || brief.canSubmit === true
+      || brief.can_submit === true
+      || /ready to post|brief is ready|finalize the brief/i.test(message)
+      || (brief.isValidProject && missingInfo.length === 0)
+      || requiredBriefFieldsComplete(brief)
+    );
   }
 
   function sectionSummary(brief, section) {
@@ -657,7 +885,7 @@ window.SkillNestComponents = (() => {
           const active = index === activeIndex;
           const future = index > activeIndex && !done;
           const hasValue = sectionHasValue(brief, section);
-          const status = done ? "✓" : hasValue ? "Take a look" : future ? "Later" : "Needs answer";
+          const status = done ? "Understood" : hasValue ? "Shaping" : future ? "Later" : "Still learning";
           return `
             <article class="section-rail-card ${active ? "active" : ""} ${done ? "done" : ""} ${future ? "future" : ""}">
               <span>${escapeHtml(section.short)}</span>
@@ -672,32 +900,42 @@ window.SkillNestComponents = (() => {
 
   function finalReviewMarkup(brief, files, completed) {
     const showEditor = localStorage.getItem("hatchShowFinalEditSections") === "true";
+    const rows = [
+      ["Title", brief.title || "Untitled Hatch"],
+      ["Client context", brief.clientContext || brief.businessType || brief.industry || "Not specified"],
+      ["Objective", brief.summary || "Not specified"],
+      ["Scope", Array.isArray(brief.scope) && brief.scope.length ? brief.scope.join(", ") : sectionSummary(brief, { id: "deliverables" })],
+      ["Deliverables", Array.isArray(brief.deliverables) && brief.deliverables.length ? brief.deliverables.join(", ") : "Not specified"],
+      ["Budget", brief.suggestedBudget || "Flexible"],
+      ["Timeline", brief.suggestedTimeline || "Flexible"],
+      ["Files / references", Array.isArray(brief.references) && brief.references.length ? brief.references.join(", ") : "No references provided"],
+      ["Recommended Hatcher level", brief.recommendedHatcherType || brief.suggestedLevel || "L1"],
+    ];
     return `
       <div class="final-review">
         <div class="final-review-head">
           <span class="readiness-pill">Ready to Post</span>
-          <h3>Final Review</h3>
-          <p>This is the version Hatchers will use to understand the Hatch.</p>
+          <h3>Your Hatch is ready.</h3>
+          <p>Review it once, then submit when it looks good.</p>
         </div>
         <div class="final-brief-list">
-          ${builderSections.map((section) => `
+          ${rows.map(([label, value]) => `
             <article>
-              <span>${escapeHtml(section.label)}</span>
-              <p>${escapeHtml(sectionSummary(brief, section))}</p>
+              <span>${escapeHtml(label)}</span>
+              <p>${escapeHtml(value)}</p>
             </article>
           `).join("")}
           <article>
             <span>Attached files</span>
-            <p>${files.length ? files.map((file) => `${file.materialType || "File"}: ${file.name || file}`).join(", ") : "No files attached"}</p>
-          </article>
-          <article>
-            <span>Recommended Hatcher level</span>
-            <p>${escapeHtml(brief.recommendedHatcherType || brief.suggestedLevel || "L1")}</p>
+            ${attachedFilesReviewMarkup(files)}
           </article>
         </div>
+        ${qualityCheckCard(brief)}
+        ${hatcherQuestionsCard(brief, files)}
         <div class="focused-actions">
           <button class="btn primary" type="button" onclick="SkillNestApp.submitReviewedHatch()">Submit Hatch</button>
-          <button class="btn secondary" type="button" onclick="SkillNestApp.toggleFinalEditList()">Edit a section</button>
+          <button class="btn secondary" type="button" onclick="SkillNestApp.toggleFinalEditList()">Edit brief</button>
+          <button class="btn ghost" type="button" onclick="SkillNestApp.continueChattingFromFinal()">Continue chatting</button>
           <button class="btn ghost" type="button" onclick="SkillNestApp.saveHatchDraft()">Save draft</button>
         </div>
         ${showEditor ? `
@@ -714,6 +952,23 @@ window.SkillNestComponents = (() => {
     `;
   }
 
+  function attachedFilesReviewMarkup(files = []) {
+    if (!files.length) return `<p>No files attached</p>`;
+    return `
+      <div class="attached-file-list">
+        ${files.map((file, index) => `
+          <div class="attached-file-row">
+            <p>
+              <strong>${escapeHtml(file.name || file)}</strong>
+              <small>${escapeHtml(file.materialType || "File")}${file.size ? ` · ${Math.ceil(file.size / 1024)} KB` : ""}</small>
+            </p>
+            <button class="btn ghost small" type="button" onclick="SkillNestApp.downloadDraftFile(${index})">Download</button>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
   function filePreviewListMarkup(files = [], emptyText = "No files attached yet") {
     if (!files.length) return `<div class="file-preview-empty">${escapeHtml(emptyText)}</div>`;
     const labelOptions = ["Services and prices", "Photos/logo", "Existing website", "Menu/items", "Brand examples", "Notes", "Other material"];
@@ -721,6 +976,7 @@ window.SkillNestComponents = (() => {
       const size = file.size ? `${Math.ceil(file.size / 1024)} KB` : "Size unavailable";
       const type = file.type || "file";
       const materialType = file.materialType || "Other material";
+      const hasSessionFile = Boolean(file.objectUrl);
       return `
         <article class="file-preview">
           <div>
@@ -733,6 +989,11 @@ window.SkillNestComponents = (() => {
                 ${labelOptions.includes(materialType) ? "" : `<option value="${escapeHtml(materialType)}" selected>${escapeHtml(materialType)}</option>`}
               </select>
             </label>
+          </div>
+          <div class="file-preview-actions">
+            ${hasSessionFile ? `<button class="btn ghost small" type="button" onclick="SkillNestApp.previewDraftFile(${index})">Preview</button>` : ""}
+            ${hasSessionFile ? `<button class="btn ghost small" type="button" onclick="SkillNestApp.downloadDraftFile(${index})">Download</button>` : ""}
+            ${hasSessionFile ? "" : `<span class="file-unavailable">Session preview unavailable</span>`}
           </div>
           <button class="btn ghost small danger" type="button" onclick="SkillNestApp.removeDraftFile(${index})">Remove</button>
         </article>
@@ -774,7 +1035,7 @@ window.SkillNestComponents = (() => {
   function conversationSectionMarkup(brief) {
     const completed = readLocalJson("hatchCompletedSections", []);
     const activeIndex = Math.min(Number(localStorage.getItem("hatchActiveSectionIndex") || 0), builderSections.length);
-    const isFinal = activeIndex >= builderSections.length;
+    const isFinal = shouldShowFinalReview(brief, activeIndex);
     const files = readLocalJson("skillnestDraftFiles", []);
     if (brief?.isProcessing) {
       return `
@@ -806,18 +1067,28 @@ window.SkillNestComponents = (() => {
     const completed = readLocalJson("hatchCompletedSections", []);
     const activeIndex = Math.min(Number(localStorage.getItem("hatchActiveSectionIndex") || 0), builderSections.length);
     const stepNumber = Math.min(activeIndex + 1, builderSections.length);
-    const isFinal = activeIndex >= builderSections.length;
+    const isFinal = shouldShowFinalReview(safeBrief, activeIndex);
+    const understood = Array.isArray(safeBrief.whatIUnderstood) ? safeBrief.whatIUnderstood.slice(0, 3) : [];
+    const uncertainty = Array.isArray(safeBrief.remainingUncertainties) ? safeBrief.remainingUncertainties[0] : "";
 
     return `
       <div class="tracker-card">
         <div class="builder-progress">
-          <span>Step ${isFinal ? builderSections.length : stepNumber} of ${builderSections.length}</span>
-          <strong>${isFinal ? "Review" : escapeHtml(builderSections[activeIndex].label)}</strong>
+          <span>${isFinal ? "Final check" : `Step ${stepNumber} of ${builderSections.length}`}</span>
+          <strong>${isFinal ? "Ready for a Hatcher" : escapeHtml(builderSections[activeIndex].label)}</strong>
         </div>
         <div class="step-track">
           ${builderSections.map((section, index) => `<span class="${completed.includes(section.id) ? "done" : ""} ${index === activeIndex ? "active" : ""}"></span>`).join("")}
         </div>
         ${isFinal ? `<p class="tracker-note">The brief is ready for a final look.</p>` : `<p class="tracker-note">Hatch is building the brief quietly as you answer.</p>`}
+        ${understood.length ? `
+          <div class="understanding-list">
+            <span>Hatch understands</span>
+            ${understood.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}
+          </div>
+        ` : ""}
+        ${uncertainty && !isFinal ? `<p class="tracker-note">Still thinking through: ${escapeHtml(uncertainty)}</p>` : ""}
+        ${liveUnderstandingCard(safeBrief, files)}
         ${sectionRail(safeBrief, activeIndex, completed)}
       </div>
     `;
@@ -857,8 +1128,9 @@ window.SkillNestComponents = (() => {
     const shownMessages = messages.length
       ? messages
       : [{ role: "assistant", text: fallbackAssistantMessage(brief) }];
+    const aiError = localStorage.getItem("hatchAiLastError") || "";
     const activeIndex = Math.min(Number(localStorage.getItem("hatchActiveSectionIndex") || 0), builderSections.length);
-    const ready = activeIndex >= builderSections.length;
+    const ready = shouldShowFinalReview(brief, activeIndex);
     const processing = Boolean(brief?.isProcessing);
     const invalid = brief?.stage === "invalid_input" || brief?.isValidProject === false || Number(brief?.confidence || 0) < 40;
     const placeholder = invalid ? "Tell Hatch what you want to build or get done..." : "Reply to Hatch...";
@@ -867,10 +1139,13 @@ window.SkillNestComponents = (() => {
     const completed = readLocalJson("hatchCompletedSections", []);
     const activeSectionId = builderSections[activeIndex]?.id || "";
     const showFileTools = !processing && !ready && !invalid && activeSectionId === "references";
+    const debugState = window.HatchAIController?.getState?.() || {};
 
     return `
       <section class="assistant-panel">
         ${processing ? `<div class="reading-indicator"><span></span><span></span><span></span></div>` : ""}
+        ${aiError ? `<div class="assistant-dev-warning">${escapeHtml(aiError)}</div>` : ""}
+        ${aiDebugPanelMarkup(debugState)}
         <div class="assistant-thread" id="assistantThread">
           ${shownMessages.map((message) => `
             <article class="assistant-message ${message.role}">
@@ -882,6 +1157,7 @@ window.SkillNestComponents = (() => {
         ${ready ? finalReviewMarkup(brief, files, completed) : ""}
         ${showFileTools ? referenceAttachmentMarkup(files, contextualSuggestions) : ""}
         ${contextualSuggestions.length && !showFileTools ? `<div class="assistant-suggestions" aria-label="Suggested replies">
+          <small>Reply naturally, or choose one below.</small>
           ${contextualSuggestions.map((item) => `<button class="choice-chip" type="button" onclick="SkillNestApp.sendAssistantReply(decodeURIComponent('${encodeURIComponent(item)}'))">${escapeHtml(item)}</button>`).join("")}
         </div>` : ""}
         ${processing || ready ? "" : `
@@ -889,8 +1165,43 @@ window.SkillNestComponents = (() => {
             <input id="assistantReply" type="text" placeholder="${escapeHtml(placeholder)}" onkeydown="SkillNestApp.handleAssistantReplyKey(event)" />
             <button class="btn primary small" type="button" onclick="SkillNestApp.sendAssistantReply()">Send</button>
           </div>
+          <p class="assistant-input-hint">Type freely — Hatch will organize it.</p>
+          <p class="inline-error" id="assistantInputError">Type a message before sending.</p>
         `}
       </section>
+    `;
+  }
+
+  function aiDebugPanelMarkup(state = {}) {
+    const fallbackUsed = state.fallbackUsed === true || state.lastAssistantSource === "local-fallback";
+    const provider = fallbackUsed ? "Local fallback" : (state.lastProvider || "DeepSeek");
+    const model = state.lastModel || "deepseek-chat";
+    const raw = state.lastRawResponse || "";
+    return `
+      <details class="ai-debug-panel" ${fallbackUsed ? "open" : ""}>
+        <summary>AI debug · ${escapeHtml(provider)}${state.lastResponseTimeMs ? ` · ${escapeHtml(String(state.lastResponseTimeMs))}ms` : ""}</summary>
+        ${fallbackUsed ? `<div class="ai-debug-warning">Local fallback is being used. DeepSeek did not generate this response.</div>` : ""}
+        <div class="ai-debug-grid">
+          <span>Provider</span><strong>${escapeHtml(provider)}</strong>
+          <span>Model</span><strong>${escapeHtml(model)}</strong>
+          <span>Last response time</span><strong>${state.lastResponseTimeMs ? `${escapeHtml(String(state.lastResponseTimeMs))}ms` : "Not recorded"}</strong>
+          <span>Fallback used</span><strong>${fallbackUsed ? "true" : "false"}</strong>
+          <span>Last intent</span><strong>${escapeHtml(state.lastIntent || "Not recorded")}</strong>
+          <span>Active section</span><strong>${escapeHtml(state.activeSection || "Not recorded")}</strong>
+          <span>Active question</span><strong>${escapeHtml(state.activeQuestion || "Not recorded")}</strong>
+          <span>Last user message</span><strong>${escapeHtml(state.lastUserMessage || "Not recorded")}</strong>
+          <span>Fields updated</span><strong>${escapeHtml((state.lastFieldsUpdated || []).join(", ") || "None")}</strong>
+          <span>Missing info before</span><strong>${escapeHtml((state.missingInfoBefore || []).join(", ") || "None")}</strong>
+          <span>Missing info after</span><strong>${escapeHtml((state.missingInfoAfter || []).join(", ") || "None")}</strong>
+          <span>Next question</span><strong>${escapeHtml(state.lastNextQuestion || "Not recorded")}</strong>
+          <span>Duplicate blocked</span><strong>${state.duplicateBlocked ? "true" : "false"}</strong>
+          <span>Last assistant source</span><strong>${escapeHtml(state.lastAssistantSource || (fallbackUsed ? "local-fallback" : "deepseek"))}</strong>
+        </div>
+        <details class="ai-raw-response">
+          <summary>Raw DeepSeek response</summary>
+          <pre>${escapeHtml(raw || "No raw DeepSeek response recorded yet.")}</pre>
+        </details>
+      </details>
     `;
   }
 
@@ -907,6 +1218,7 @@ window.SkillNestComponents = (() => {
           </a>
           <div class="nav-links">
             <a href="#browse" class="${active === "browse" ? "active" : ""}">Hatches</a>
+            <a href="#verified-work" class="${active === "verified-work" ? "active" : ""}">Verified Work</a>
             <a href="#operator" class="${active === "operator" ? "active" : ""}">Become a Hatcher</a>
             <a href="#trust" class="secondary-link ${active === "trust" ? "active" : ""}">Trust</a>
           </div>
@@ -1056,8 +1368,7 @@ window.SkillNestComponents = (() => {
         </div>
         ${interactive ? `
           <div class="task-actions" onclick="event.stopPropagation()">
-            <button class="btn secondary small save-action" type="button" onclick="SkillNestApp.saveMission('${task.id}', 'Saved')">Save Hatch</button>
-            <button class="btn primary small apply-action" type="button" ${isOpen ? `onclick="SkillNestApp.saveMission('${task.id}', 'Incubating')"` : "disabled"}>${isOpen ? "Apply" : status.label}</button>
+            <button class="btn primary small view-action" type="button" onclick="SkillNestApp.openTaskDetail('${task.id}')">View details</button>
           </div>
         ` : ""}
       </article>
@@ -1101,6 +1412,132 @@ window.SkillNestComponents = (() => {
     `;
   }
 
+  function verifiedWorkCard(work) {
+    const profile = hatcherForWork(work);
+    const hatcherName = work.showProfile && profile ? profile.name : "Private Hatcher";
+    const hatcherMeta = work.showProfile && profile ? `${profile.level} · ${profile.specialization}` : "Profile hidden";
+    return `
+      <article class="verified-feed-item">
+        <div class="verified-feed-head">
+          <button class="verified-hatcher-link" type="button" ${work.showProfile && profile ? `onclick="SkillNestApp.openVerifiedHatcherProfile('${profile.id}')"` : "disabled"} aria-label="View ${escapeHtml(hatcherName)} profile">
+            <div class="avatar small-avatar">${escapeHtml(profile?.initials || "H")}</div>
+          </button>
+          <button class="verified-hatcher-link verified-hatcher-name" type="button" ${work.showProfile && profile ? `onclick="SkillNestApp.openVerifiedHatcherProfile('${profile.id}')"` : "disabled"}>
+            <strong>${escapeHtml(hatcherName)}</strong>
+            <span>${escapeHtml(work.completedAt)} · ${escapeHtml(work.industry)} · ${escapeHtml(work.level)}</span>
+          </button>
+          <span class="verified-status">Verified delivery</span>
+        </div>
+        <div class="verified-feed-body">
+          <h3>${escapeHtml(work.title)}</h3>
+          <p>${escapeHtml(work.outcome)}</p>
+        </div>
+        <div class="verified-feed-meta">
+          <span>Completed ${escapeHtml(visibleCompletionTime(work))}</span>
+          <span>${escapeHtml(visibleEarnings(work))}</span>
+          <span>★★★★★ ${escapeHtml(work.rating)}</span>
+        </div>
+        <p class="verified-feed-note">${escapeHtml(hatcherMeta)}</p>
+        <div class="task-actions verified-feed-actions">
+          <button class="btn secondary small" type="button" onclick="SkillNestApp.openVerifiedProject('${work.id}')">View Project</button>
+          <button class="btn secondary small" type="button" onclick="SkillNestApp.shareVerifiedWork('${work.id}')">Share</button>
+        </div>
+      </article>
+    `;
+  }
+
+  function recentVerifiedWorkSection() {
+    return `
+      <section class="section recent-verified-section">
+        <div class="section-head compact-head">
+          <div>
+            <div class="section-label">Recently completed</div>
+            <h2>Verified Work</h2>
+          </div>
+          <a class="btn secondary small" href="#verified-work">View all</a>
+        </div>
+        <div class="recent-verified-list">
+          ${completedHatches.slice(0, 3).map((work) => `
+            <article>
+              <strong>${escapeHtml(work.title)}</strong>
+              <span>${escapeHtml(visibleHatcherName(work))} · ${escapeHtml(visibleEarnings(work))} · ${escapeHtml(visibleCompletionTime(work))}</span>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+    `;
+  }
+
+  function verifiedProjectDetail(work) {
+    const profile = hatcherForWork(work);
+    return modal(`
+      <div class="detail-head">
+        <span class="level-ribbon">${escapeHtml(work.level)}</span>
+        ${work.verifiedBadges.map((badge) => tag(badge, "verified-tag")).join("")}
+      </div>
+      <h1>${escapeHtml(work.title)}</h1>
+      <strong class="detail-budget">${escapeHtml(visibleEarnings(work))}</strong>
+      <div class="detail-grid">
+        <div><span>Industry</span><strong>${escapeHtml(work.industry)}</strong></div>
+        <div><span>Completed</span><strong>${escapeHtml(visibleCompletionTime(work))}</strong></div>
+        <div><span>Rating</span><strong>${escapeHtml(work.rating)}</strong></div>
+        <div><span>Level</span><strong>${escapeHtml(work.level)}</strong></div>
+      </div>
+      <h2>Client context</h2>
+      <p>${escapeHtml(work.clientContext)}</p>
+      <h2>Objective</h2>
+      <p>${escapeHtml(work.objective)}</p>
+      <h2>Scope of work</h2>
+      <ul class="clean-list">${work.scope.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      <h2>Deliverables</h2>
+      <ul class="clean-list checklist-list">${work.deliverables.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      <h2>Outcome</h2>
+      <p>${escapeHtml(work.outcome)}</p>
+      <h2>Completed by</h2>
+      <div class="completed-by detail-completed-by">
+        <div class="avatar">${escapeHtml(profile?.initials || "H")}</div>
+        <div>
+          <strong>${escapeHtml(work.showProfile && profile ? profile.name : "Completed by private Hatcher")}</strong>
+          <p>${escapeHtml(work.showProfile && profile ? `${profile.level} · ${profile.specialization}` : "Profile hidden for this completed Hatch")}</p>
+        </div>
+      </div>
+      ${work.showProfile && profile ? `<button class="btn primary full" type="button" onclick="SkillNestApp.openVerifiedHatcherProfile('${profile.id}')">View Hatcher Profile</button>` : ""}
+    `);
+  }
+
+  function verifiedHatcherProfile(profile) {
+    const recent = completedHatches.filter((work) => profile.recentWorkIds.includes(work.id));
+    return modal(`
+      <div class="operator-head detail-operator-head">
+        <div class="avatar">${escapeHtml(profile.initials)}</div>
+        <div>
+          <h1>${escapeHtml(profile.name)}</h1>
+          <p>${escapeHtml(profile.level)} · ${escapeHtml(profile.specialization)}</p>
+        </div>
+      </div>
+      <div class="detail-grid proof-grid">
+        <div><span>Rating</span><strong>${escapeHtml(profile.rating)}</strong></div>
+        <div><span>Completed</span><strong>${escapeHtml(profile.completedCount)} Hatches</strong></div>
+        <div><span>Joined</span><strong>${escapeHtml(profile.joinedAt)}</strong></div>
+        <div><span>Average completion</span><strong>${escapeHtml(profile.averageCompletion)}</strong></div>
+        <div><span>Total earned</span><strong>${escapeHtml(profile.totalEarned)}</strong></div>
+      </div>
+      <h2>Verified skills</h2>
+      <div class="tag-row">${profile.skills.map((item) => tag(item)).join("")}</div>
+      <h2>Common industries</h2>
+      <div class="tag-row">${profile.industries.map((item) => tag(item)).join("")}</div>
+      <h2>Recent verified work</h2>
+      <div class="verified-work-list compact-work-list">
+        ${recent.map((work) => `
+          <article>
+            <strong>${escapeHtml(work.title)}</strong>
+            <span>${escapeHtml(visibleEarnings(work))} · ${escapeHtml(visibleCompletionTime(work))} · ${escapeHtml(work.rating)}</span>
+          </article>
+        `).join("")}
+      </div>
+    `);
+  }
+
   function modal(content) {
     return `
       <div class="modal-backdrop" onclick="SkillNestApp.closeModal()">
@@ -1112,15 +1549,89 @@ window.SkillNestComponents = (() => {
     `;
   }
 
+  function scopeForTask(task, category) {
+    const title = `${task.title || ""} ${task.description || ""}`.toLowerCase();
+    if (category === "Website" || title.includes("website")) {
+      return ["Write homepage copy", "Create page structure", "Include service sections", "Add booking/contact CTA", "Make it mobile-friendly", "Prepare final handoff notes"];
+    }
+    if (category === "Content" || title.includes("instagram")) {
+      return ["Review source material", "Create content angles", "Write captions or post copy", "Organize posts into a usable plan", "Include light publishing notes"];
+    }
+    if (category === "Operations" || title.includes("workflow")) {
+      return ["Map the current process", "Create the form or sheet structure", "Define the handoff steps", "Add simple tracking notes", "Document how to use it"];
+    }
+    if (category === "Customer Support" || title.includes("faq") || title.includes("reply")) {
+      return ["Review common questions", "Group replies by situation", "Write clear response templates", "Add tone and escalation notes"];
+    }
+    if (title.includes("menu")) {
+      return ["Review menu items", "Clean up item descriptions", "Organize categories", "Prepare editable menu copy or layout notes"];
+    }
+    return ["Review the client brief", "Create a first usable version", "Organize the work clearly", "Prepare final handoff notes"];
+  }
+
+  function deliverablesForTask(task, category) {
+    if (Array.isArray(task.deliverables) && task.deliverables.length >= 4) return task.deliverables;
+    const title = `${task.title || ""} ${task.description || ""}`.toLowerCase();
+    const base = Array.isArray(task.deliverables) ? task.deliverables : [];
+    const fallback = category === "Website" || title.includes("website")
+      ? ["Homepage layout draft", "Website copy", "Service section content", "Contact/booking section", "Mobile-friendly structure", "Final editable file or implementation notes"]
+      : category === "Content"
+        ? ["Content ideas", "Captions or copy", "Posting plan", "Hashtag or format notes", "Editable handoff document"]
+        : category === "Operations"
+          ? ["Workflow outline", "Form or sheet structure", "Process notes", "Final setup instructions"]
+          : ["First usable version", "Clear delivery notes", "Editable final file or handoff notes"];
+    return [...new Set([...base, ...fallback])].slice(0, 7);
+  }
+
+  function missingInfoForTask(task, category, files = [], references = []) {
+    const text = `${task.title || ""} ${task.description || ""} ${task.objective || ""}`.toLowerCase();
+    const missing = [];
+    if (category === "Website" || text.includes("website")) {
+      if (!references.some((item) => /business name/i.test(item))) missing.push("business name");
+      if (!files.some((file) => /logo|photo/i.test(file.materialType || file.name || ""))) missing.push("logo or photos");
+      if (!references.some((item) => /booking|contact|link/i.test(item))) missing.push("booking or contact link");
+      missing.push("preferred colors or style");
+    } else if (category === "Content" || text.includes("instagram")) {
+      if (!files.length) missing.push("source menu, product list, or examples");
+      missing.push("preferred tone");
+      missing.push("posting frequency");
+    } else if (category === "Operations") {
+      if (!files.length) missing.push("current process or sample sheet");
+      missing.push("tools currently used");
+    }
+    return [...new Set(missing)].slice(0, 5);
+  }
+
+  function levelReason(level, category) {
+    if (level === "L1") return "Recommended level: L1 — this is a simple support task with clear outputs and low setup risk.";
+    if (level === "L2") return `Recommended level: L2 — this requires practical ${String(category || "business").toLowerCase()} judgment and client-facing execution.`;
+    if (level === "L3") return "Recommended level: L3 — this involves setup, workflow logic, or stronger technical judgment.";
+    return "Recommended level: L4 — this would require advanced strategy or specialist oversight.";
+  }
+
+  function clientContextForTask(task, category) {
+    const business = task.business || task.industry || "client";
+    if (category === "Website") return `The client runs a ${business.toLowerCase()} and wants a simple website that explains the offer, key details, and next steps for customers.`;
+    if (category === "Content") return `The client needs practical content that can be published consistently without starting from a blank page each time.`;
+    if (category === "Operations") return `The client wants to make a repeated admin process easier to track and hand off.`;
+    if (category === "Customer Support") return `The client wants clearer replies for common customer questions so responses are faster and more consistent.`;
+    return `The client runs a ${business.toLowerCase()} and needs a practical Hatch completed with clear handoff notes.`;
+  }
+
   function taskDetail(task) {
     const status = statusInfo(task.status);
     const isOpen = status.label === "New Hatch";
+    const isHatched = status.label === "Hatched";
     const category = task.category || task.industry;
     const completion = task.estimatedCompletion || task.timeline;
     const files = Array.isArray(task.files) ? task.files : [];
     const references = Array.isArray(task.references) ? task.references : [];
     const detailObjective = task.objective || task.description || suggestedObjective(`${task.title || ""} ${task.description || ""}`, task.industry || task.business || "", category);
     const introText = task.description && task.description !== detailObjective ? task.description : "";
+    const scope = Array.isArray(task.scope) && task.scope.length ? task.scope : scopeForTask(task, category);
+    const deliverables = deliverablesForTask(task, category);
+    const missingInfo = Array.isArray(task.missingInfo) && task.missingInfo.length ? task.missingInfo : missingInfoForTask(task, category, files, references);
+    const isPostedClientTask = String(task.id || "").startsWith("hatch-") || String(task.id || "").startsWith("posted-");
     return modal(`
       <div class="detail-head">
         <span class="level-ribbon">${task.level}</span>
@@ -1135,17 +1646,32 @@ window.SkillNestComponents = (() => {
         <div><span>Estimated completion</span><strong>${escapeHtml(completion)}</strong></div>
         <div><span>Level</span><strong>${escapeHtml(task.level)}</strong></div>
       </div>
+      <h2>Client context</h2>
+      <p>${escapeHtml(task.clientContext || clientContextForTask(task, category))}</p>
       <h2>Client objective</h2>
       <p>${escapeHtml(detailObjective)}</p>
+      <h2>Scope of work</h2>
+      <ul class="clean-list">${scope.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
       <h2>Expected outputs</h2>
-      <ul class="clean-list">${task.deliverables.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      <ul class="clean-list checklist-list">${deliverables.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      ${missingInfo.length ? `
+        <h2>Missing information</h2>
+        <ul class="missing-list">${missingInfo.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      ` : ""}
+      <h2>Recommended Hatcher level</h2>
+      <p>${escapeHtml(levelReason(task.level, category))}</p>
       <h2>Files and references</h2>
       ${files.length || references.length ? `
         <div class="detail-file-list">
-          ${files.map((file) => `
+          ${files.map((file, index) => `
             <article>
               <strong>${escapeHtml(file.name || file)}</strong>
               <span>${escapeHtml(file.materialType || "File")} · ${escapeHtml(file.type || "file")}${file.size ? ` · ${Math.ceil(file.size / 1024)} KB` : ""}</span>
+              <div class="detail-file-actions">
+                ${file.objectUrl ? `<button class="btn ghost small" type="button" onclick="SkillNestApp.previewTaskFile('${task.id}', ${index})">Preview</button>` : `<span class="file-unavailable">Preview unavailable after reload</span>`}
+                ${file.objectUrl ? `<button class="btn ghost small" type="button" onclick="SkillNestApp.downloadTaskFile('${task.id}', ${index})">Download</button>` : ""}
+                ${isPostedClientTask ? `<button class="btn ghost small danger" type="button" onclick="SkillNestApp.removePostedTaskFile('${task.id}', ${index})">Remove</button>` : ""}
+              </div>
             </article>
           `).join("")}
           ${references.filter((item) => !String(item || "").startsWith("Attached file:")).map((item) => `
@@ -1156,10 +1682,14 @@ window.SkillNestComponents = (() => {
           `).join("")}
         </div>
       ` : `<p class="muted-text">No files or references attached.</p>`}
-      <div class="task-actions modal-actions">
-        <button class="btn secondary full" type="button" onclick="SkillNestApp.saveMission('${task.id}', 'Saved'); SkillNestApp.closeModal();">Save Hatch</button>
-        <button class="btn primary full" type="button" ${isOpen ? `onclick="SkillNestApp.saveMission('${task.id}', 'Incubating'); SkillNestApp.closeModal();"` : "disabled"}>${isOpen ? "Apply to Hatch" : "Not currently open"}</button>
-      </div>
+      ${isHatched ? `
+        <p class="muted-text completion-note">This Hatch has already been completed.</p>
+      ` : `
+        <div class="task-actions modal-actions">
+          <button class="btn secondary full" type="button" onclick="SkillNestApp.saveMission('${task.id}', 'Saved'); SkillNestApp.closeModal();">Save Hatch</button>
+          <button class="btn primary full" type="button" ${isOpen ? `onclick="SkillNestApp.saveMission('${task.id}', 'Incubating'); SkillNestApp.closeModal();"` : "disabled"}>${isOpen ? "Apply to Hatch" : "Not currently open"}</button>
+        </div>
+      `}
     `);
   }
 
@@ -1215,6 +1745,7 @@ window.SkillNestComponents = (() => {
           <div class="footer-links">
             <a href="#post-task">Post a Hatch</a>
             <a href="#browse">Browse Hatches</a>
+            <a href="#verified-work">Verified Work</a>
             <a href="#operator">Become a Hatcher</a>
             <a href="#trust">Trust</a>
             ${profileLink}
@@ -1239,6 +1770,7 @@ window.SkillNestComponents = (() => {
     isLowQualityProjectInput,
     isProjectReady,
     recentlyHatchedSection,
+    recentVerifiedWorkSection,
     modal,
     nav,
     nextClarification,
@@ -1254,5 +1786,8 @@ window.SkillNestComponents = (() => {
     taskReviewBriefMarkup,
     taskPreviewMarkup,
     textAreaField,
+    verifiedHatcherProfile,
+    verifiedProjectDetail,
+    verifiedWorkCard,
   };
 })();

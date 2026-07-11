@@ -1,5 +1,5 @@
 window.SkillNestApp = (() => {
-  const { tasks, operators } = window.SkillNestData;
+  const { tasks, operators, completedHatches, hatcherProfiles } = window.SkillNestData;
   const C = window.SkillNestComponents;
   const Pages = window.SkillNestPages;
   let voiceRecognition = null;
@@ -7,6 +7,8 @@ window.SkillNestApp = (() => {
   let isVoicePaused = false;
   let voiceHadTranscript = false;
   let voiceSessionText = "";
+  let assistantTurnInFlight = false;
+  const fileObjectUrls = new Map();
 
   function currentRoute() {
     return window.location.hash.replace("#", "") || "home";
@@ -39,6 +41,14 @@ window.SkillNestApp = (() => {
     return readJson("skillnestPostedTasks", []);
   }
 
+  function hydrateSessionFiles(files = []) {
+    return files.map((file) => {
+      const key = file.sessionId || `${file.name || "file"}-${file.size || 0}`;
+      const { objectUrl, ...metadata } = file;
+      return fileObjectUrls.has(key) ? { ...metadata, objectUrl: fileObjectUrls.get(key) } : metadata;
+    });
+  }
+
   function marketplaceTasks() {
     const posted = getPostedTasks().map((task) => {
       const industry = task.industry || task.category || "General";
@@ -59,7 +69,9 @@ window.SkillNestApp = (() => {
         estimatedCompletion: task.estimatedCompletion || task.timeline || task.deadline || "Flexible",
         status: task.status || "New Hatch",
         deliverables: Array.isArray(task.deliverables) && task.deliverables.length ? task.deliverables : ["Review the Hatch brief", "Deliver the agreed outcome"],
-        files: Array.isArray(task.files) ? task.files : [],
+        scope: Array.isArray(task.scope) ? task.scope : [],
+        missingInfo: Array.isArray(task.missingInfo) ? task.missingInfo : [],
+        files: Array.isArray(task.files) ? hydrateSessionFiles(task.files) : [],
         references: Array.isArray(task.references) ? task.references : [],
       };
     });
@@ -101,20 +113,51 @@ window.SkillNestApp = (() => {
     localStorage.setItem("hatchAssistantMessages", JSON.stringify(messages));
   }
 
+  function debugFlow(label, data = {}) {
+    try {
+      console.debug(`[Hatch flow] ${label}`, JSON.parse(JSON.stringify(data)));
+    } catch {
+      console.debug(`[Hatch flow] ${label}`, data);
+    }
+  }
+
   function sectionIdFromUpdateKey(key) {
+    const normalized = String(key || "").toLowerCase().replace(/[\s-]+/g, "_");
     return {
+      title: "title",
       project: "title",
+      project_title: "title",
       business: "businessType",
+      business_type: "businessType",
+      client_context: "businessType",
+      product: "businessType",
+      product_type: "businessType",
       goal: "summary",
+      objective: "summary",
+      audience: "businessType",
+      school_type: "businessType",
+      target_audience: "businessType",
+      deliverable: "deliverables",
+      deliverables: "deliverables",
       timeline: "suggestedTimeline",
+      deadline: "suggestedTimeline",
       budget: "suggestedBudget",
-    }[key] || key;
+      industry: "industry",
+      category: "industry",
+      references: "references",
+      reference: "references",
+      files: "references",
+      constraints: "constraints",
+      constraint: "constraints",
+      review: "review",
+    }[normalized] || key || "general";
   }
 
   function firstRunMessage(brief) {
     if (!brief?.isValidProject || brief.stage === "invalid_input") {
       return brief.assistantMessage || "Tell me what you need done, who it is for, and what a good result would look like.";
     }
+    if (brief.assistantMessage) return brief.assistantMessage;
     const title = brief.title || "this Hatch";
     const summary = brief.summary || `Shape ${title.toLowerCase()} into a clear Hatch.`;
     return `I think I’ve got the main idea: ${summary}\n\nI’ll handle the structure. ${nextSpecificQuestion(brief)}`;
@@ -157,6 +200,12 @@ window.SkillNestApp = (() => {
 
   function nextSpecificQuestion(brief) {
     const missing = new Set(brief?.missingInfo || []);
+    const text = `${brief?.title || ""} ${brief?.summary || ""} ${brief?.category || ""} ${brief?.taskType || ""}`.toLowerCase();
+    if ((missing.has("cta") || missing.has("call to action") || missing.has("viewer action")) || /\b(video|promo|ad|reel|product)\b/.test(text)) {
+      if (!/(sign up|download|buy|learn more|call to action|cta)/i.test(`${brief?.summary || ""} ${(brief?.constraints || []).join(" ")}`)) {
+        return "The next thing I need is what the video should make viewers do: sign up, download, buy, or learn more?";
+      }
+    }
     if (!brief?.timelineKnown && (missing.has("timeline") || brief?.suggestedTimeline)) {
       return "The next useful thing is timing. When would you like this finished: this week, this month, or flexible?";
     }
@@ -210,7 +259,7 @@ window.SkillNestApp = (() => {
     if (clean.includes("website")) {
       return "I understand this is about a website. Is it a new site, a redesign, or a small update?";
     }
-    return "I’m not fully sure what you want done yet. Try one sentence like: create Instagram posts for my cafe, build a website for my salon, or organize customer data.";
+    return "I’m not quite sure what the Hatch is yet. Tell me the task, who it is for, and what result you want.";
   }
 
   function invalidProjectBrief(sourceText = "") {
@@ -235,7 +284,7 @@ window.SkillNestApp = (() => {
       missingInfo: ["project request"],
       recommendedHatcherType: "",
       summary: "",
-      assistantMessage: "I’m not fully sure what you want done yet. Try one sentence like: create Instagram posts for my cafe, build a website for my salon, or organize customer data.",
+      assistantMessage: "I’m not quite sure what you want done yet. Tell me the task, who it is for, and what result you want.",
       nextQuestion: {
         key: "objective",
         prompt: "What are you trying to accomplish?",
@@ -305,6 +354,7 @@ window.SkillNestApp = (() => {
     localStorage.removeItem("hatchCompletedSections");
     localStorage.removeItem("hatchSectionMessages");
     localStorage.removeItem("hatchBriefEditKey");
+    localStorage.removeItem("hatchAnsweredTurnIds");
     const prompt = document.getElementById("taskPrompt");
     const files = readJson("skillnestDraftFiles", []);
     const reviewButton = document.getElementById("reviewTaskButton");
@@ -339,65 +389,35 @@ window.SkillNestApp = (() => {
       }
 
       initializeBuilderProgress(brief);
-      localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(brief));
-      saveAssistantMessages([{ role: "assistant", text: firstRunMessage(brief) }]);
+      const assistantText = firstRunMessage(brief);
+      const nextBrief = attachNextTurn(applyFinalReviewState(brief, assistantText));
+      localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
+      saveAssistantMessages([{ role: "assistant", text: nextBrief.assistantMessage || assistantText }]);
       render();
     }, 420);
   }
 
   async function requestProjectIntake(payload) {
-    if (payload.mode !== "clarify" && C.isLowQualityProjectInput(payload.inputText || "", payload.files || [])) {
-      localStorage.setItem("hatchAiIntakeMode", "local-validation");
-      return invalidProjectBrief(payload.inputText || "");
-    }
-
-    try {
-      const response = await fetch("/api/project-intake", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) throw new Error("AI intake unavailable");
-      const data = await response.json();
-      if (!data.ok || !data.brief) throw new Error(data.error || "AI intake unavailable");
-      localStorage.setItem("hatchAiIntakeMode", "connected");
-      return normalizeProjectBrief(data.brief, payload);
-    } catch {
-      localStorage.setItem("hatchAiIntakeMode", "local-fallback");
-      if (payload.mode === "clarify") return fallbackClarification(payload.brief, payload.key, payload.answer);
-      if (C.isLowQualityProjectInput(payload.inputText || "", payload.files || [])) return invalidProjectBrief(payload.inputText || "");
-      return C.generateTaskBrief(payload.inputText || "", payload.files || []);
-    }
+    const result = await window.HatchAIController.organize(payload);
+    const rawBrief = result.data?.brief || result.payload;
+    return normalizeProjectBrief(rawBrief, payload);
   }
 
   async function requestProjectAssistant(payload) {
-    try {
-      const response = await fetch("/api/project-assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) throw new Error("AI assistant unavailable");
-      const data = await response.json();
-      if (!data.ok || !data.result) throw new Error(data.error || "AI assistant unavailable");
-      localStorage.setItem("hatchAiIntakeMode", "connected");
-      return data.result;
-    } catch {
-      localStorage.setItem("hatchAiIntakeMode", "local-fallback");
-      const nextBrief = fallbackClarification(payload.brief, payload.key, payload.answer);
-      return {
-        ok: true,
-        assistantMessage: nextBrief.assistantMessage || C.fallbackAssistantMessage(nextBrief),
-        brief: nextBrief,
-      };
-    }
+    const result = await window.HatchAIController.continueConversation(payload);
+    return result.data?.result || result.data?.brief || result.payload;
   }
 
   function normalizeProjectBrief(brief, payload = {}) {
     const structuredBrief = brief.brief && typeof brief.brief === "object";
-    const serverShaped = structuredBrief || brief.is_valid_project !== undefined || brief.assistant_message !== undefined || brief.missing_fields !== undefined;
+    const serverShaped = structuredBrief
+      || brief.is_valid_project !== undefined
+      || brief.valid_input !== undefined
+      || brief.task_detected !== undefined
+      || brief.task_type !== undefined
+      || brief.assistant_message !== undefined
+      || brief.missing_fields !== undefined
+      || brief.missing_info !== undefined;
     if (serverShaped) {
       return normalizeIntakeResponse(brief, payload);
     }
@@ -424,13 +444,64 @@ window.SkillNestApp = (() => {
     };
   }
 
+  function budgetOnlyWithoutProject(payload = {}, response = {}) {
+    if (payload.mode === "clarify" || payload.brief?.isValidProject) return false;
+    const text = String(payload.inputText || payload.answer || "").toLowerCase().trim();
+    if (!text) return false;
+    const hasMoney = /\$?\d+|under\s+\$?\d+|around\s+\d+|budget/.test(text);
+    const hasTaskVerb = /\b(build|create|write|design|organize|research|draft|make|rewrite|automate|fix|update|prepare)\b/.test(text);
+    const responseLooksBudgetOnly = /budget/i.test(response.specific_task || response.task_type || "");
+    return hasMoney && !hasTaskVerb && responseLooksBudgetOnly;
+  }
+
   function normalizeIntakeResponse(response, payload = {}) {
     const previous = payload.brief || {};
     const rawBrief = response.brief || {};
-    const sectionUpdates = response.section_updates || {};
+    const richUpdates = response.brief_updates || {};
+    const responseIntent = String(response.intent || response.next_action || "").toUpperCase();
+    const nonUpdatingIntents = new Set(["QUESTION", "HELP_REQUEST", "EXAMPLE_REQUEST", "CONFUSED", "GREETING", "SMALL_TALK", "INVALID"]);
+    const broadAudienceAnswer = payload.mode === "clarify"
+      && (payload.key === "audience" || payload.conversation_state?.expected_answer_type === "audience")
+      && /\b(everybody|everyone|anyone|all people|general public)\b/i.test(payload.answer || "");
+    const quickReplyAnswer = payload.quickReplyAnswer === true;
+    const shouldUpdateBrief = broadAudienceAnswer || quickReplyAnswer || (response.should_update_brief !== false && !nonUpdatingIntents.has(responseIntent));
+    const sectionUpdates = {
+      ...(response.section_updates || {}),
+      project: richUpdates.title || response.section_updates?.project,
+      business: richUpdates.business || richUpdates.client_context || response.section_updates?.business,
+      goal: richUpdates.objective || response.section_updates?.goal,
+      deliverables: richUpdates.deliverables || response.section_updates?.deliverables,
+      timeline: richUpdates.timeline || response.section_updates?.timeline,
+      budget: richUpdates.budget || response.section_updates?.budget,
+      industry: richUpdates.industry || response.section_updates?.industry,
+      audience: broadAudienceAnswer ? "Broad audience, including the main public-facing groups" : richUpdates.audience || response.section_updates?.audience,
+      references: richUpdates.references || response.section_updates?.references,
+      constraints: richUpdates.constraints || response.section_updates?.constraints,
+    };
     const sourceFallback = C.generateTaskBrief(payload.inputText || previous.sourceText || "", payload.files || previous.files || []);
-    const isValidProject = response.is_valid_project === true || response.isValidProject === true;
-    const confidence = Math.max(0, Math.min(100, Number(response.confidence) || 0));
+    const hasProjectSignal = Boolean(
+      response.task_detected === true
+      || response.taskDetected === true
+      || response.specific_task
+      || response.task_type
+      || richUpdates.title
+      || richUpdates.objective
+      || rawBrief.project_title
+      || rawBrief.goal,
+    );
+    const taskDetected = response.task_detected === true || response.taskDetected === true || hasProjectSignal;
+    const isValidProject = response.is_valid_project === true
+      || response.isValidProject === true
+      || (response.valid_input === true && taskDetected)
+      || (response.valid_input !== false && hasProjectSignal);
+    const confidence = Math.max(0, Math.min(100, Number(response.confidence) || (isValidProject ? 72 : 0)));
+    if (budgetOnlyWithoutProject(payload, response)) {
+      return {
+        ...invalidProjectBrief(payload.inputText || ""),
+        assistantMessage: "I can use that as a budget once I know the project. What do you need done?",
+        confidence: 10,
+      };
+    }
     const stage = ["invalid_input", "understanding_project", "clarifying_missing_info", "ready_to_post"].includes(response.stage)
       ? response.stage
       : (isValidProject && confidence >= 40 ? "clarifying_missing_info" : "invalid_input");
@@ -452,49 +523,104 @@ window.SkillNestApp = (() => {
               : invalidGuidance(payload.answer || "", payload.key || ""),
         };
       }
+      const invalid = invalidProjectBrief(payload.inputText || previous.sourceText || "");
       return {
-        ...invalidProjectBrief(payload.inputText || previous.sourceText || ""),
+        ...invalid,
+        assistantMessage: response.assistant_message || response.assistantMessage || invalid.assistantMessage,
         confidence,
         clarificationCount: previous.clarificationCount || 0,
       };
     }
 
-    if (payload.mode === "clarify" && payload.key && payload.answer) {
-      const validation = validateSectionAnswer(payload.key, payload.answer, previous);
-      if (!validation.ok) {
-        return {
-          ...previous,
-          assistantMessage: validation.message,
-          nextQuestion: validation.question,
-          clarificationCount: Math.min(Number(previous.clarificationCount || 0) + 1, 5),
-        };
-      }
-    }
-
-    if (payload.mode === "clarify" && response.normalized_value && response.section_id && response.should_mark_complete !== false) {
+    if (payload.mode === "clarify" && shouldUpdateBrief && response.normalized_value && response.section_id && response.should_mark_complete !== false) {
       const responseSectionId = sectionIdFromUpdateKey(response.section_id);
       const responseKey = assistantKeyForSection(responseSectionId);
       const normalized = normalizeUserAnswer(responseKey, response.normalized_value, previous);
       const nextBrief = updateBriefObject({ ...previous, updatedAt: new Date().toISOString() }, normalized.key, normalized.value);
+      if (response.expected_answer_type === "audience" || response.section_id === "audience" || payload.conversation_state?.expected_answer_type === "audience") {
+        nextBrief.audience = normalizeUserAnswer("audience", response.normalized_value || payload.answer, previous).value;
+        if (!nextBrief.businessType) nextBrief.businessType = nextBrief.audience;
+        nextBrief.missingInfo = (nextBrief.missingInfo || []).filter((item) => !/audience|school type|target|primary audience/i.test(item));
+      }
       nextBrief.assistantMessage = response.assistant_message || response.assistantMessage || normalizedAnswerMessage(responseSectionId, normalized.value);
       nextBrief.completedSectionId = responseSectionId;
       nextBrief.stage = response.ready_to_submit ? "ready_to_post" : "clarifying_missing_info";
       nextBrief.readiness = response.ready_to_submit ? "Ready to Post" : "Almost Ready";
+      const nextQuestionText = response.next_question || response.nextQuestion || "";
+      const quickReplies = Array.isArray(response.quick_replies)
+        ? response.quick_replies.filter(Boolean)
+        : Array.isArray(response.quickReplies)
+        ? response.quickReplies.filter(Boolean)
+        : [];
+      if (nextQuestionText) {
+        nextBrief.nextQuestion = {
+          key: expectedTypeFromQuestion(nextQuestionText, response.next_section || response.active_section || "general"),
+          prompt: nextQuestionText,
+          suggestions: quickReplies,
+          placeholder: "Reply naturally",
+        };
+        nextBrief.activeQuestion = nextQuestionText;
+        nextBrief.activeSection = sectionForActiveQuestion(nextQuestionText, nextBrief.nextQuestion.key);
+        nextBrief.expectedAnswerType = nextBrief.nextQuestion.key;
+        nextBrief.assistantMessage = response.assistant_message || response.assistantMessage || normalizedAnswerMessage(responseSectionId, normalized.value, nextBrief.nextQuestion);
+      }
+      nextBrief.missingInfo = removeMissingInfoForSection(nextBrief.missingInfo || [], responseSectionId, response.expected_answer_type || response.section_id);
       return nextBrief;
     }
 
-    const missingFields = Array.isArray(response.missing_fields) ? response.missing_fields.filter(Boolean) : [];
+    const missingFields = Array.isArray(response.missing_info)
+      ? response.missing_info.filter(Boolean)
+      : Array.isArray(response.missingInfo)
+      ? response.missingInfo.filter(Boolean)
+      : Array.isArray(response.missing_fields) ? response.missing_fields.filter(Boolean) : [];
     const deliverables = Array.isArray(rawBrief.deliverables) ? rawBrief.deliverables.filter(Boolean) : [];
     const constraints = Array.isArray(rawBrief.constraints) ? rawBrief.constraints.filter(Boolean) : [];
     const references = Array.isArray(rawBrief.references)
       ? rawBrief.references.filter(Boolean)
       : [rawBrief.references].filter(Boolean);
       const nextQuestionText = response.next_question || "";
-    const quickReplies = Array.isArray(response.quick_replies) ? response.quick_replies.filter(Boolean) : [];
-    const normalizedStage = stage === "ready_to_post" ? "ready_to_post" : (missingFields.length ? "clarifying_missing_info" : "understanding_project");
+    const quickReplies = Array.isArray(response.quick_replies)
+      ? response.quick_replies.filter(Boolean)
+      : Array.isArray(response.quickReplies)
+      ? response.quickReplies.filter(Boolean)
+      : Array.isArray(response.quick_replies) ? response.quick_replies.filter(Boolean) : [];
+    const fieldsUpdated = Array.isArray(response.fields_updated)
+      ? response.fields_updated.filter(Boolean)
+      : Array.isArray(response.fieldsUpdated)
+      ? response.fieldsUpdated.filter(Boolean)
+      : [];
+    const understoodItems = Array.isArray(response.what_i_understood)
+      ? response.what_i_understood.filter(Boolean)
+      : Array.isArray(response.whatIUnderstood)
+      ? response.whatIUnderstood.filter(Boolean)
+      : [];
+    const remainingUncertainties = Array.isArray(response.remaining_uncertainties)
+      ? response.remaining_uncertainties.filter(Boolean)
+      : Array.isArray(response.remainingUncertainties)
+      ? response.remainingUncertainties.filter(Boolean)
+      : [];
+    const understandingSummary = response.understanding_summary && typeof response.understanding_summary === "object"
+      ? response.understanding_summary
+      : previous.understandingSummary || {};
+    const qualityCheck = response.quality_check && typeof response.quality_check === "object"
+      ? response.quality_check
+      : previous.qualityCheck || {};
+    const hatcherQuestions = Array.isArray(response.hatcher_questions)
+      ? response.hatcher_questions.filter(Boolean).slice(0, 4)
+      : previous.hatcherQuestions || [];
+    const responseActiveSection = sectionIdFromUpdateKey(response.active_section || response.section_id || response.next_section || missingFields[0] || "general");
+    const responseExpectedType = response.expected_answer_type
+      || assistantKeyForSection(responseActiveSection)
+      || assistantKeyForSection(sectionIdFromUpdateKey(missingFields[0] || ""));
+    const aiReadiness = String(response.readiness || "").toLowerCase();
+    const normalizedStage = stage === "ready_to_post" || aiReadiness === "ready_to_post"
+      ? "ready_to_post"
+      : (missingFields.length ? "clarifying_missing_info" : "understanding_project");
     const readiness = normalizedStage === "ready_to_post"
       ? "Ready to Post"
-      : normalizedStage === "clarifying_missing_info"
+      : aiReadiness === "shaping"
+        ? "Shaping the Hatch"
+        : normalizedStage === "clarifying_missing_info"
         ? "Almost Ready"
         : "Understanding Your Project";
 
@@ -504,31 +630,46 @@ window.SkillNestApp = (() => {
       stage: normalizedStage,
       isValidProject: true,
       confidence,
-      title: sectionUpdates.project || rawBrief.project_title || sourceFallback.title || previous.title || "Untitled Hatch",
-      businessType: sectionUpdates.business || rawBrief.business_type || sourceFallback.businessType || previous.businessType || "",
-      industry: sectionUpdates.industry || rawBrief.industry || sourceFallback.industry || previous.industry || rawBrief.business_type || "",
-      category: rawBrief.category || sourceFallback.category || previous.category || "General",
-      suggestedLevel: rawBrief.operator_level || sourceFallback.suggestedLevel || previous.suggestedLevel || "L1",
-      suggestedBudget: sectionUpdates.budget || rawBrief.budget || previous.suggestedBudget || "",
-      suggestedTimeline: sectionUpdates.timeline || rawBrief.deadline || previous.suggestedTimeline || "",
-      budgetKnown: Boolean(sectionUpdates.budget || rawBrief.budget || previous.budgetKnown),
-      timelineKnown: Boolean(sectionUpdates.timeline || rawBrief.deadline || previous.timelineKnown),
-      deliverables: Array.isArray(sectionUpdates.deliverables) && sectionUpdates.deliverables.length ? sectionUpdates.deliverables : deliverables.length ? deliverables : sourceFallback.deliverables || previous.deliverables || [],
+      title: shouldUpdateBrief ? sectionUpdates.project || rawBrief.project_title || response.specific_task || sourceFallback.title || previous.title || "Untitled Hatch" : previous.title,
+      businessType: shouldUpdateBrief ? sectionUpdates.business || rawBrief.business_type || richUpdates.client_context || sourceFallback.businessType || previous.businessType || "" : previous.businessType,
+      clientContext: shouldUpdateBrief ? richUpdates.client_context || response.client_context || previous.clientContext || "" : previous.clientContext,
+      audience: shouldUpdateBrief ? sectionUpdates.audience || rawBrief.audience || previous.audience || "" : previous.audience,
+      industry: shouldUpdateBrief ? sectionUpdates.industry || rawBrief.industry || sourceFallback.industry || previous.industry || rawBrief.business_type || "" : previous.industry,
+      category: shouldUpdateBrief ? richUpdates.category || response.task_type || rawBrief.category || sourceFallback.category || previous.category || "General" : previous.category,
+      suggestedLevel: shouldUpdateBrief ? richUpdates.recommended_hatcher_level || richUpdates.recommendedLevel || rawBrief.operator_level || sourceFallback.suggestedLevel || previous.suggestedLevel || "L1" : previous.suggestedLevel,
+      suggestedBudget: shouldUpdateBrief ? sectionUpdates.budget || rawBrief.budget || previous.suggestedBudget || "" : previous.suggestedBudget,
+      suggestedTimeline: shouldUpdateBrief ? sectionUpdates.timeline || rawBrief.deadline || previous.suggestedTimeline || "" : previous.suggestedTimeline,
+      budgetKnown: shouldUpdateBrief ? Boolean(sectionUpdates.budget || rawBrief.budget || previous.budgetKnown) : previous.budgetKnown,
+      timelineKnown: shouldUpdateBrief ? Boolean(sectionUpdates.timeline || rawBrief.deadline || previous.timelineKnown) : previous.timelineKnown,
+      deliverables: shouldUpdateBrief ? Array.isArray(sectionUpdates.deliverables) && sectionUpdates.deliverables.length ? sectionUpdates.deliverables : deliverables.length ? deliverables : sourceFallback.deliverables || previous.deliverables || [] : previous.deliverables || [],
+      scope: shouldUpdateBrief ? Array.isArray(richUpdates.scope) ? richUpdates.scope.filter(Boolean) : Array.isArray(rawBrief.scope) ? rawBrief.scope.filter(Boolean) : previous.scope || sourceFallback.scope || [] : previous.scope || [],
       knownRequirements: previous.knownRequirements || [],
-      constraints: Array.isArray(sectionUpdates.constraints) && sectionUpdates.constraints.length ? sectionUpdates.constraints : constraints.length ? constraints : previous.constraints || [],
-      references: sectionUpdates.references ? [sectionUpdates.references].flat().filter(Boolean) : references.length ? references : previous.references || [],
+      constraints: shouldUpdateBrief ? Array.isArray(sectionUpdates.constraints) && sectionUpdates.constraints.length ? sectionUpdates.constraints : constraints.length ? constraints : previous.constraints || [] : previous.constraints || [],
+      references: shouldUpdateBrief ? sectionUpdates.references ? [sectionUpdates.references].flat().filter(Boolean) : references.length ? references : previous.references || [] : previous.references || [],
       missingInfo: missingFields,
-      recommendedHatcherType: rawBrief.operator_level ? `${rawBrief.operator_level} Hatcher` : previous.recommendedHatcherType || "",
+      recommendedHatcherType: (richUpdates.recommended_hatcher_level || rawBrief.operator_level) ? `${richUpdates.recommended_hatcher_level || rawBrief.operator_level} Hatcher` : previous.recommendedHatcherType || "",
       summary: sectionUpdates.goal || rawBrief.goal || sourceFallback.summary || previous.summary || "",
       assistantMessage: response.assistant_message || response.assistantMessage || C.fallbackAssistantMessage(previous),
-      nextQuestion: nextQuestionText ? {
-        key: missingFields[0] || "general",
-        prompt: nextQuestionText,
+      fieldsUpdated,
+      whatIUnderstood: understoodItems,
+      remainingUncertainties,
+      understandingSummary,
+      qualityCheck,
+      hatcherQuestions,
+      activeSection: responseActiveSection,
+      activeQuestion: response.nextQuestion || nextQuestionText || "",
+      expectedAnswerType: responseExpectedType || "general",
+      lastAssistantIntent: responseIntent || response.intent || response.next_action || "",
+      nextQuestion: (response.nextQuestion || nextQuestionText) ? {
+        key: responseExpectedType || missingFields[0] || "general",
+        prompt: response.nextQuestion || nextQuestionText,
         suggestions: quickReplies,
         placeholder: "Type your answer",
       } : { key: "none", prompt: "", suggestions: [], placeholder: "" },
       readiness,
       sourceText: payload.inputText || rawBrief.sourceText || previous.sourceText || "",
+      taskType: shouldUpdateBrief ? response.task_type || previous.taskType || "" : previous.taskType || "",
+      specificTask: shouldUpdateBrief ? response.specific_task || previous.specificTask || "" : previous.specificTask || "",
       files: Array.isArray(rawBrief.files) ? rawBrief.files : payload.files || previous.files || [],
       clarificationCount: Math.min(Number(previous.clarificationCount || 0) + (payload.mode === "clarify" ? 1 : 0), 5),
     };
@@ -543,13 +684,35 @@ window.SkillNestApp = (() => {
       normalized.nextQuestion = normalized.nextQuestion?.key && normalized.nextQuestion.key !== "none" ? normalized.nextQuestion : sourceFallback.nextQuestion;
     }
 
-    if (payload.mode === "clarify" && payload.sectionId && !questionLike(payload.answer || "") && response.next_action !== "answer_question") {
-      normalized.completedSectionId = payload.sectionId;
+    if (shouldUpdateBrief && payload.mode === "clarify" && payload.answer && (payload.key === "audience" || payload.conversation_state?.expected_answer_type === "audience") && !normalized.audience) {
+      normalized.audience = normalizeUserAnswer("audience", payload.answer, previous).value;
+      normalized.missingInfo = (normalized.missingInfo || []).filter((item) => !/audience|school type|target/i.test(item));
     }
 
-    if (Array.isArray(response.completed_sections) && response.completed_sections.length) {
+    if (shouldUpdateBrief && payload.mode === "clarify" && payload.answer && payload.conversation_state?.expected_answer_type === "audience") {
+      normalized.audience = normalized.audience || normalizeUserAnswer("audience", payload.answer, previous).value;
+      normalized.missingInfo = (normalized.missingInfo || []).filter((item) => !/audience|school type|target|primary audience/i.test(item));
+      if (!normalized.businessType && normalized.audience) normalized.businessType = normalized.audience;
+    }
+
+    if (shouldUpdateBrief && payload.mode === "clarify" && payload.sectionId && briefSectionIds().includes(payload.sectionId) && !questionLike(payload.answer || "") && response.next_action !== "answer_question") {
+      const updatedSection = fieldsUpdated.map(sectionIdFromUpdateKey).find((sectionId) => briefSectionIds().includes(sectionId));
+      const responseSection = sectionIdFromUpdateKey(response.section_id || response.active_section || "");
+      normalized.completedSectionId = updatedSection || (briefSectionIds().includes(responseSection) ? responseSection : payload.sectionId);
+    }
+
+    if (shouldUpdateBrief && Array.isArray(response.completed_sections) && response.completed_sections.length) {
       const completed = response.completed_sections.map(sectionIdFromUpdateKey);
       localStorage.setItem("hatchCompletedSections", JSON.stringify([...new Set([...completedSections(), ...completed])]));
+    }
+
+    if (shouldUpdateBrief && fieldsUpdated.length) {
+      const completedFromUpdates = fieldsUpdated
+        .map(sectionIdFromUpdateKey)
+        .filter((sectionId) => briefSectionIds().includes(sectionId));
+      if (completedFromUpdates.length) {
+        localStorage.setItem("hatchCompletedSections", JSON.stringify([...new Set([...completedSections(), ...completedFromUpdates])]));
+      }
     }
 
     if (response.active_section) {
@@ -617,6 +780,317 @@ window.SkillNestApp = (() => {
   function questionLike(answer = "") {
     const clean = answer.toLowerCase().trim();
     return clean.endsWith("?") || /^(what|why|how|can|could|should|would|do|does|is|are|will)\b/.test(clean);
+  }
+
+  function normalizedQuestionText(text = "") {
+    return String(text || "")
+      .toLowerCase()
+      .replace(/[^\w\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function isSameQuestion(previousQuestion = "", nextQuestion = "") {
+    const previous = normalizedQuestionText(previousQuestion);
+    const next = normalizedQuestionText(nextQuestion);
+    if (!previous || !next) return false;
+    if (previous === next) return true;
+    const previousWords = new Set(previous.split(" ").filter((word) => word.length > 2));
+    const nextWords = next.split(" ").filter((word) => word.length > 2);
+    if (!previousWords.size || !nextWords.length) return false;
+    const overlap = nextWords.filter((word) => previousWords.has(word)).length / Math.max(nextWords.length, previousWords.size);
+    return overlap >= 0.72;
+  }
+
+  function isDuplicateAssistantMessage(previousMessage = "", nextMessage = "") {
+    const previous = normalizedQuestionText(previousMessage);
+    const next = normalizedQuestionText(nextMessage);
+    if (!previous || !next) return false;
+    if (previous === next) return true;
+    const previousWords = new Set(previous.split(" ").filter((word) => word.length > 2));
+    const nextWords = next.split(" ").filter((word) => word.length > 2);
+    if (!previousWords.size || !nextWords.length) return false;
+    const overlap = nextWords.filter((word) => previousWords.has(word)).length / Math.max(previousWords.size, nextWords.length);
+    return overlap >= 0.78;
+  }
+
+  function answeredTurnIds() {
+    return new Set(readJson("hatchAnsweredTurnIds", []));
+  }
+
+  function saveAnsweredTurnIds(ids) {
+    localStorage.setItem("hatchAnsweredTurnIds", JSON.stringify([...ids]));
+  }
+
+  function makeTurnId() {
+    return `turn-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function currentTurnForState(brief = {}, state = {}) {
+    const questionText = state.active_question || brief.activeQuestion || brief.nextQuestion?.prompt || "";
+    const activeSection = state.active_section || sectionForActiveQuestion(questionText, state.expected_answer_type);
+    const expectedAnswerType = state.expected_answer_type || expectedTypeFromQuestion(questionText, assistantKeyForSection(activeSection));
+    const existing = brief.currentTurn || {};
+    if (existing.questionText && isSameQuestion(existing.questionText, questionText)) {
+      return {
+        turnId: existing.turnId || makeTurnId(),
+        questionText,
+        activeSection: existing.activeSection || activeSection,
+        expectedAnswerType: existing.expectedAnswerType || expectedAnswerType,
+      };
+    }
+    return {
+      turnId: makeTurnId(),
+      questionText,
+      activeSection,
+      expectedAnswerType,
+    };
+  }
+
+  function markTurnAnswered(turnId) {
+    if (!turnId) return;
+    const ids = answeredTurnIds();
+    ids.add(turnId);
+    saveAnsweredTurnIds(ids);
+  }
+
+  function attachNextTurn(brief = {}) {
+    const questionText = brief.nextQuestion?.prompt || brief.activeQuestion || "";
+    if (!questionText || brief.stage === "ready_to_post") {
+      const { currentTurn, ...rest } = brief;
+      return rest;
+    }
+    const activeSection = sectionForActiveQuestion(questionText, brief.nextQuestion?.key || brief.expectedAnswerType);
+    const expectedAnswerType = expectedTypeFromQuestion(questionText, brief.nextQuestion?.key || assistantKeyForSection(activeSection));
+    return {
+      ...brief,
+      activeQuestion: questionText,
+      activeSection,
+      expectedAnswerType,
+      currentTurn: {
+        turnId: makeTurnId(),
+        questionText,
+        activeSection,
+        expectedAnswerType,
+      },
+    };
+  }
+
+  function removeMissingInfoForSection(missingInfo = [], sectionId = "", expectedType = "") {
+    const section = sectionIdFromUpdateKey(sectionId);
+    const type = String(expectedType || "").toLowerCase();
+    const patterns = {
+      businessType: /business|industry|client|context|audience|school type|target|product type|type of product/i,
+      summary: /goal|objective|main message|key points?|highlight|focus|outcome|success/i,
+      deliverables: /deliverable|output|scope|format|handoff/i,
+      suggestedTimeline: /timeline|deadline|timing|finished|completion/i,
+      suggestedBudget: /budget|price|cost|range/i,
+      industry: /industry|business|category/i,
+      references: /reference|file|material|source|example|link|photo|logo|menu|product list/i,
+      constraints: /constraint|tone|style|avoid|requirement/i,
+    };
+    const pattern = patterns[section] || (type ? new RegExp(type.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i") : null);
+    if (!pattern) return missingInfo;
+    return missingInfo.filter((item) => !pattern.test(String(item || "")));
+  }
+
+  function resolveAnswerForActiveTurn(brief = {}, state = {}, answer = "", turn = {}) {
+    const activeQuestion = turn.questionText || state.active_question || brief.activeQuestion || brief.nextQuestion?.prompt || "";
+    const expectedType = turn.expectedAnswerType || state.expected_answer_type || expectedTypeFromQuestion(activeQuestion, "general");
+    const sectionId = sectionForActiveQuestion(activeQuestion, expectedType);
+    if (!briefSectionIds().includes(sectionId)) return null;
+    const flexibleSection = ["suggestedTimeline", "suggestedBudget", "references", "constraints"].includes(sectionId);
+    if (!answerLooksConcrete(answer) && !(flexibleSection && (uncertainAnswer(answer) || skipAnswer(answer)))) return null;
+
+    let normalized = normalizeUserAnswer(sectionId, answer, {
+      ...brief,
+      activeQuestion,
+      expectedAnswerType: expectedType,
+    });
+    let nextBrief = updateBriefObject({ ...brief, updatedAt: new Date().toISOString() }, normalized.key, normalized.value);
+
+    if (expectedType === "audience" || /audience|who is this.*for|who is this video|students|parents/i.test(activeQuestion)) {
+      normalized = { key: "audience", value: normalizeAudienceAnswer(answer) };
+      nextBrief.audience = normalized.value;
+      if (!nextBrief.businessType) nextBrief.businessType = normalized.value;
+      nextBrief.missingInfo = removeMissingInfoForSection(nextBrief.missingInfo || [], "businessType", "audience");
+    }
+
+    if (expectedType === "product" || expectedType === "product_type" || /product type|type of product|what type of product/i.test(activeQuestion)) {
+      normalized = { key: "businessType", value: normalizeProductTypeAnswer(answer) };
+      nextBrief.businessType = normalized.value;
+      nextBrief.clientContext = normalized.value;
+      nextBrief.missingInfo = removeMissingInfoForSection(nextBrief.missingInfo || [], "businessType", "product_type");
+    }
+
+    if (expectedType === "business" || expectedType === "business_name" || expectedType === "app_name" || /name of your app|app name|business name|brand name|app or business/i.test(activeQuestion)) {
+      const name = titleCaseShort(answer);
+      normalized = { key: "clientContext", value: name };
+      nextBrief.clientContext = name;
+      nextBrief.knownRequirements = [...new Set([...(nextBrief.knownRequirements || []), `Business/app name: ${name}`])];
+      nextBrief.missingInfo = (nextBrief.missingInfo || []).filter((item) => !/app name|business name|brand name|product name|name/i.test(item));
+    }
+
+    if (sectionId === "suggestedBudget") {
+      nextBrief.suggestedBudget = normalizeBudgetAnswer(answer);
+      nextBrief.budgetKnown = true;
+      nextBrief.missingInfo = removeMissingInfoForSection(nextBrief.missingInfo || [], sectionId, "budget");
+    }
+
+    if (sectionId === "suggestedTimeline") {
+      nextBrief.suggestedTimeline = normalizeTimelineAnswer(answer);
+      nextBrief.timelineKnown = true;
+      nextBrief.missingInfo = removeMissingInfoForSection(nextBrief.missingInfo || [], sectionId, "timeline");
+    }
+
+    if (sectionId === "references") {
+      nextBrief.references = [normalizeReferenceAnswer(answer)].filter(Boolean);
+      nextBrief.missingInfo = removeMissingInfoForSection(nextBrief.missingInfo || [], sectionId, "references");
+    }
+
+    nextBrief.missingInfo = removeMissingInfoForSection(nextBrief.missingInfo || [], sectionId, expectedType);
+    return {
+      answered: true,
+      sectionId,
+      expectedType,
+      normalizedValue: normalized.value,
+      brief: nextBrief,
+      fieldsUpdated: [normalized.key || sectionId],
+    };
+  }
+
+  function mergeResolvedAnswer(aiBrief = {}, resolution = null) {
+    if (!resolution?.answered) return aiBrief;
+    const merged = { ...aiBrief };
+    if (resolution.sectionId === "businessType") {
+      merged.businessType = aiBrief.businessType || resolution.brief.businessType;
+      merged.clientContext = aiBrief.clientContext || resolution.brief.clientContext;
+      merged.audience = aiBrief.audience || resolution.brief.audience;
+    }
+    if (resolution.sectionId === "suggestedBudget" && !merged.suggestedBudget) {
+      merged.suggestedBudget = resolution.brief.suggestedBudget;
+      merged.budgetKnown = true;
+    }
+    if (resolution.sectionId === "suggestedTimeline" && !merged.suggestedTimeline) {
+      merged.suggestedTimeline = resolution.brief.suggestedTimeline;
+      merged.timelineKnown = true;
+    }
+    if (resolution.sectionId === "references" && !(merged.references || []).length) {
+      merged.references = resolution.brief.references || [];
+    }
+    merged.missingInfo = removeMissingInfoForSection(merged.missingInfo || [], resolution.sectionId, resolution.expectedType);
+    merged.fieldsUpdated = [...new Set([...(merged.fieldsUpdated || []), ...(resolution.fieldsUpdated || [])])];
+    merged.completedSectionId = merged.completedSectionId || resolution.sectionId;
+    return merged;
+  }
+
+  function recoveredBriefAfterDuplicate(brief = {}, state = {}, answer = "", resolution = null) {
+    const recovered = applyAnsweredQuestionLocally(brief, state, answer);
+    if (recovered) return recovered;
+    if (!resolution?.answered) return null;
+
+    const nextBrief = {
+      ...resolution.brief,
+      ok: true,
+      isValidProject: true,
+      stage: "clarifying_missing_info",
+      readiness: "Almost Ready",
+      updatedAt: new Date().toISOString(),
+    };
+    const suggested = nextSpecificQuestion(nextBrief);
+    nextBrief.nextQuestion = {
+      key: expectedTypeFromQuestion(suggested, "general"),
+      prompt: suggested,
+      suggestions: [],
+      placeholder: "Reply naturally",
+    };
+    nextBrief.activeQuestion = suggested;
+    nextBrief.activeSection = sectionForActiveQuestion(suggested, nextBrief.nextQuestion.key);
+    nextBrief.expectedAnswerType = nextBrief.nextQuestion.key;
+    nextBrief.assistantMessage = normalizedAnswerMessage(resolution.sectionId, resolution.normalizedValue, nextBrief.nextQuestion);
+    nextBrief.completedSectionId = resolution.sectionId;
+    return nextBrief;
+  }
+
+  function answerLooksConcrete(answer = "") {
+    const clean = normalizedAnswer(answer);
+    if (!clean || clean.length < 2) return false;
+    if (questionLike(answer)) return false;
+    if (/^(not sure|idk|i don t know|maybe|help|examples?)$/.test(clean)) return false;
+    return true;
+  }
+
+  function sectionForActiveQuestion(question = "", expectedType = "") {
+    const text = normalizedQuestionText(question);
+    if (expectedType === "audience" || /\b(who|audience|students|parents|community)\b/.test(text)) return "businessType";
+    if (expectedType === "business" || expectedType === "business_name" || expectedType === "app_name" || /\b(name of your app|app name|business name|brand name|name of your business|app or business)\b/.test(text)) return "businessType";
+    if (expectedType === "product" || expectedType === "product_type" || /\b(product type|type of product|what type of product|digital product|physical product)\b/.test(text)) return "businessType";
+    if (expectedType === "budget" || /\b(budget|price|cost|\$)\b/.test(text)) return "suggestedBudget";
+    if (expectedType === "timeline" || /\b(when|timeline|deadline|finished|completed)\b/.test(text)) return "suggestedTimeline";
+    if (expectedType === "deliverables" || /\b(deliver|output|format|reel|video|hand over|hand back)\b/.test(text)) return "deliverables";
+    if (expectedType === "references" || /\b(reference|file|example|material|photo|logo|link)\b/.test(text)) return "references";
+    if (expectedType === "constraints" || /\b(tone|style|avoid|constraint)\b/.test(text)) return "constraints";
+    if (expectedType === "goal" || /\b(main message|key message|key points|highlight|feature|focus|remember|convey|culture|spirit|goal|outcome)\b/.test(text)) return "summary";
+    return sectionIdFromUpdateKey(expectedType || "summary");
+  }
+
+  function applyAnsweredQuestionLocally(brief = {}, state = {}, answer = "") {
+    if (!brief?.ok || !answerLooksConcrete(answer)) return null;
+    const sectionId = sectionForActiveQuestion(state.active_question, state.expected_answer_type);
+    if (!briefSectionIds().includes(sectionId)) return null;
+
+    const normalized = normalizeUserAnswer(sectionId, answer, {
+      ...brief,
+      activeQuestion: state.active_question,
+    });
+    const nextBrief = updateBriefObject({ ...brief, updatedAt: new Date().toISOString() }, sectionId, normalized.value);
+    if (state.expected_answer_type === "audience" || /audience|who is this for|who is this video/i.test(state.active_question || "")) {
+      nextBrief.audience = normalizeAudienceAnswer(answer);
+      if (!nextBrief.businessType) nextBrief.businessType = nextBrief.audience;
+      nextBrief.missingInfo = (nextBrief.missingInfo || []).filter((item) => !/audience|school type|target|primary audience/i.test(item));
+    }
+    if (state.expected_answer_type === "product" || state.expected_answer_type === "product_type" || /product type|type of product|what type of product/i.test(state.active_question || "")) {
+      nextBrief.businessType = normalizeProductTypeAnswer(answer);
+      nextBrief.clientContext = nextBrief.businessType;
+      nextBrief.missingInfo = (nextBrief.missingInfo || []).filter((item) => !/product type|type of product|product context|business context/i.test(item));
+    }
+    if (state.expected_answer_type === "business" || state.expected_answer_type === "business_name" || state.expected_answer_type === "app_name" || /name of your app|app name|business name|brand name|app or business/i.test(state.active_question || "")) {
+      const name = titleCaseShort(answer);
+      nextBrief.businessType = nextBrief.businessType || name;
+      nextBrief.clientContext = name;
+      nextBrief.knownRequirements = [...new Set([...(nextBrief.knownRequirements || []), `Business/app name: ${name}`])];
+      nextBrief.missingInfo = (nextBrief.missingInfo || []).filter((item) => !/app name|business name|brand name|product name|name/i.test(item));
+    }
+    if (sectionId === "summary") {
+      const focus = cleanSentence(answer).replace(/\.$/, "");
+      nextBrief.summary = brief.summary
+        ? `${brief.summary.replace(/\.$/, "")}. Key message/focus: ${focus}.`
+        : `Focus the Hatch on ${focus}.`;
+      nextBrief.constraints = [...new Set([...(brief.constraints || []), `Key focus: ${focus}`])];
+      nextBrief.missingInfo = (nextBrief.missingInfo || []).filter((item) => !/main message|key points?|highlight|culture|spirit|specific aspects|goal|objective/i.test(item));
+    }
+
+    const completed = new Set([...completedSections(), sectionId, ...inferredCompletedSections(nextBrief)]);
+    localStorage.setItem("hatchCompletedSections", JSON.stringify([...completed]));
+    const suggested = nextSpecificQuestion(nextBrief);
+    nextBrief.nextQuestion = {
+      key: expectedTypeFromQuestion(suggested, "general"),
+      prompt: suggested,
+      suggestions: [],
+      placeholder: "Reply naturally",
+    };
+    nextBrief.activeQuestion = suggested;
+    nextBrief.activeSection = sectionIdFromUpdateKey(nextBrief.nextQuestion.key);
+    nextBrief.expectedAnswerType = nextBrief.nextQuestion.key;
+    nextBrief.assistantMessage = normalizedAnswerMessage(sectionId, normalized.value, nextBrief.nextQuestion);
+    return nextBrief;
+  }
+
+  function repeatsActiveQuestion(response = {}, payload = {}) {
+    return isSameQuestion(
+      payload.conversation_state?.active_question || payload.brief?.activeQuestion || "",
+      response.next_question || response.nextQuestion || "",
+    );
   }
 
   function adviceRequest(answer = "") {
@@ -945,7 +1419,13 @@ window.SkillNestApp = (() => {
     const overMatch = clean.match(/\b(?:over|above|at least|min|minimum)\s*\$?\s*(\d+(?:,\d{3})?)\b/);
     if (overMatch) return `At least ${normalizeMoney(overMatch[1])}`;
     const numberMatch = clean.match(/\$?\s*(\d+(?:,\d{3})?)\b/);
-    if (numberMatch) return `around ${normalizeMoney(numberMatch[1])}`;
+    if (numberMatch) {
+      const amount = Number(String(numberMatch[1]).replace(/[^\d.]/g, ""));
+      if (Number.isFinite(amount) && amount > 0) {
+        const low = Math.max(25, Math.round(amount * 0.7 / 10) * 10);
+        return `${normalizeMoney(low)}–${normalizeMoney(amount)} flexible`;
+      }
+    }
     return titleCaseShort(raw);
   }
 
@@ -964,12 +1444,32 @@ window.SkillNestApp = (() => {
     return titleCaseShort(raw);
   }
 
+  function normalizeAudienceAnswer(raw = "") {
+    const clean = normalizedAnswer(raw);
+    if (/\bprospective students?\b/.test(clean)) return "Prospective students";
+    if (/\bparents?\b/.test(clean) && /\bstudents?\b/.test(clean)) return "Students and parents";
+    if (/\bboth\b/.test(clean)) return "Students and parents";
+    if (/\bparents?\b/.test(clean)) return "Parents";
+    if (/\bgeneral community|community|local community\b/.test(clean)) return "General community";
+    if (/\beverybody|everyone|anyone|general public|all people\b/.test(clean)) return "Broad audience";
+    return titleCaseShort(raw);
+  }
+
+  function normalizeProductTypeAnswer(raw = "") {
+    const clean = normalizedAnswer(raw);
+    if (/\bdigital\b/.test(clean)) return "Digital product";
+    if (/\bphysical\b/.test(clean)) return "Physical product";
+    if (/\bservice\b/.test(clean)) return "Service";
+    if (/\bsubscription\b/.test(clean)) return "Subscription product";
+    return titleCaseShort(raw);
+  }
+
   function normalizeReferenceAnswer(raw = "") {
     const clean = normalizedAnswer(raw);
     const urls = String(raw || "").match(/https?:\/\/[^\s]+/g);
     if (urls?.length) return urls.join(", ");
-    if (/\b(no|none|nothing)\b/.test(clean)) return "No references provided";
-    if (/\b(not yet|no references yet|no menu yet|later)\b/.test(clean)) return "No references yet";
+    if (/\b(no|none|nothing)\b/.test(clean)) return "No source material available yet";
+    if (/\b(not yet|no references yet|no menu yet|later|don t have|do not have|dont have|don’t have|don t have right now|no files? right now)\b/.test(clean)) return "No source material available yet";
     if (/\b(use best judgment|you decide|up to you)\b/.test(clean)) return "Use best judgment; no source materials provided yet";
     return cleanSentence(raw).replace(/\.$/, "");
   }
@@ -990,7 +1490,11 @@ window.SkillNestApp = (() => {
       if (!value.length && currentBrief.deliverables?.length) value = currentBrief.deliverables;
     } else if (key === "summary") {
       value = cleanSentence(raw || currentBrief.summary || "Create a clear, usable result.");
-    } else if (key === "businessType" || key === "industry") {
+    } else if (key === "audience") {
+      value = normalizeAudienceAnswer(raw);
+    } else if (key === "businessType") {
+      value = /product/i.test(currentBrief.activeQuestion || currentBrief.nextQuestion?.prompt || "") ? normalizeProductTypeAnswer(raw) : titleCaseShort(raw);
+    } else if (key === "industry") {
       value = titleCaseShort(raw);
     } else if (key === "title") {
       value = cleanSentence(raw).replace(/\.$/, "") || currentBrief.title || "New Hatch";
@@ -1303,148 +1807,247 @@ window.SkillNestApp = (() => {
   }
 
   async function sendAssistantReply(value = "") {
+    if (assistantTurnInFlight) return;
     const input = document.getElementById("assistantReply");
     const answer = (value || input?.value || "").trim();
+    if (!answer) {
+      const error = document.getElementById("assistantInputError");
+      if (error) {
+        error.textContent = "Type a message before sending.";
+        error.classList.add("show");
+      }
+      input?.focus();
+      return;
+    }
+    document.getElementById("assistantInputError")?.classList.remove("show");
+    assistantTurnInFlight = true;
+    try {
+      await handleAssistantTurn(answer);
+    } finally {
+      assistantTurnInFlight = false;
+    }
+  }
+
+  async function handleAssistantTurn(userMessage = "") {
+    const answer = String(userMessage || "").trim();
     const brief = getGeneratedBrief();
     if (!brief?.ok || !answer) return;
-
-    const sectionId = activeSectionId();
-    const key = assistantKeyForSection(sectionId);
     const existingMessages = getAssistantMessages();
-
-    if (affirmativeAnswer(answer)) {
-      saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: "Nice, I’ll move us to the next part." }]);
-      confirmSection(sectionId);
-      return;
-    }
-
-    if (skipAnswer(answer)) {
-      const briefCopy = { ...brief };
-      if (sectionId === "suggestedTimeline") updateBriefObject(briefCopy, sectionId, "Flexible");
-      if (sectionId === "suggestedBudget") updateBriefObject(briefCopy, sectionId, "Flexible");
-      if (sectionId === "references") updateBriefObject(briefCopy, sectionId, "No references yet");
-      if (sectionId === "constraints") updateBriefObject(briefCopy, sectionId, "None for now");
-      localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(briefCopy));
-      saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: "No worries. I’ll keep this flexible and move us along." }]);
-      confirmSection(sectionId);
-      return;
-    }
-
-    if (ambiguousPlatformAnswer(answer) && ["summary", "deliverables", "constraints"].includes(sectionId)) {
-      saveAssistantMessages([
-        ...existingMessages,
-        { role: "user", text: answer },
-        { role: "assistant", text: `Got it — ${answer} is the platform. Do you mean content creation, account management, ads, or growth strategy?` },
-      ]);
-      return;
-    }
-
-    if (brief.isValidProject && correctionIntent(answer)) {
-      const recentTopic = recentTopicFromMessages(existingMessages);
-      if (recentTopic) {
-        const correctedSectionId = sectionIdForAssistantKey(recentTopic);
-        const correctedIndex = briefSectionIds().indexOf(correctedSectionId);
-        if (correctedIndex >= 0) setActiveSectionIndex(correctedIndex);
-        const advice = adviceForSection(brief, recentTopic);
-        const nextBrief = {
-          ...brief,
-          assistantMessage: advice.message,
-          nextQuestion: advice.question,
-          clarificationCount: Math.min((brief.clarificationCount || 0) + 1, 5),
-        };
-        localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
-        saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: advice.message }]);
-        render();
-        return;
-      }
-    }
-
-    if (brief.isValidProject && uncertainAnswer(answer) && ["timeline", "budget", "deliverables"].includes(key)) {
-      const advice = uncertaintyForSection(brief, key);
-      const nextBrief = {
-        ...brief,
-        assistantMessage: advice.message,
-        nextQuestion: advice.question,
-        clarificationCount: Math.min((brief.clarificationCount || 0) + 1, 5),
-      };
-      localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
-      saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: advice.message }]);
-      render();
-      return;
-    }
-
-    if (brief.isValidProject && adviceRequest(answer)) {
-      const advice = adviceForSection(brief, key);
-      const nextBrief = {
-        ...brief,
-        assistantMessage: advice.message,
-        nextQuestion: advice.question,
-        clarificationCount: Math.min((brief.clarificationCount || 0) + 1, 5),
-      };
-      localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
-      saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: advice.message }]);
-      render();
-      return;
-    }
+    const state = conversationState(brief, existingMessages, answer);
+    const sectionId = state.active_section;
+    const key = state.expected_answer_type || assistantKeyForSection(sectionId);
+    const activeTurn = currentTurnForState(brief, state);
+    const missingInfoBefore = brief.missingInfo || [];
+    const resolution = resolveAnswerForActiveTurn(brief, state, answer, activeTurn);
+    const quickReplyAnswer = Array.isArray(brief.nextQuestion?.suggestions)
+      && brief.nextQuestion.suggestions.some((item) => normalizedAnswer(item) === normalizedAnswer(answer));
+    const answeredCurrentTurn = Boolean(resolution?.answered || quickReplyAnswer);
+    if (answeredCurrentTurn) markTurnAnswered(activeTurn.turnId);
+    console.log("[Hatch Bug] activeSection before:", sectionId);
+    console.log("[Hatch Bug] activeQuestion before:", state.active_question);
+    console.log("[Hatch Bug] userMessage:", answer);
+    console.log("[Hatch Bug] expectedAnswerType:", key);
+    console.log("[Hatch Bug] turnId:", activeTurn.turnId);
+    console.log("[Hatch Bug] quickReplies before:", brief.nextQuestion?.suggestions || []);
+    debugFlow("before user reply", {
+      active_section: sectionId,
+      active_question: state.active_question,
+      expected_answer_type: key,
+      user_message: answer,
+      quick_reply_answer: quickReplyAnswer,
+      turn_id: activeTurn.turnId,
+      resolved_answer: resolution?.normalizedValue || "",
+    });
+    window.HatchAIController?.writeState?.({
+      activeQuestion: state.active_question,
+      activeSection: sectionId,
+      expectedAnswerType: key,
+      lastUserMessage: answer,
+      lastFieldsUpdated: resolution?.fieldsUpdated || [],
+      missingInfoBefore,
+      missingInfoAfter: missingInfoBefore,
+      lastNextQuestion: state.active_question,
+      duplicateBlocked: false,
+      activeTurn,
+    });
 
     if (!brief.isValidProject || brief.stage === "invalid_input" || Number(brief.confidence || 0) < 40) {
-      const recovered = recoveredBriefFromAnswer(answer, brief);
-      if (recovered) {
-        mergeInferredProgress(recovered);
-        localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(recovered));
-        saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: recovered.assistantMessage }]);
-        render();
-        return;
-      }
-      saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: invalidGuidance(answer, key) }]);
+      const pendingMessages = [...existingMessages, { role: "user", text: answer }, { role: "assistant", text: "I’ll take a closer look and shape this into a Hatch." }];
+      saveAssistantMessages(pendingMessages);
       render();
-      return;
-    }
 
-    const validation = validateSectionAnswer(key, answer, brief);
-    if (!validation.ok) {
-      const nextBrief = {
-        ...brief,
-        assistantMessage: validation.message,
-        nextQuestion: validation.question,
-        clarificationCount: Math.min((brief.clarificationCount || 0) + 1, 5),
-      };
-      localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
-      saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: validation.message }]);
-      render();
-      return;
-    }
-
-    if (brief.isValidProject && validation.ok && !questionLike(answer) && !adviceRequest(answer)) {
-      const nextBrief = completeSectionWithAnswer(brief, sectionId, key, answer);
-      localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
-      saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: nextBrief.assistantMessage }]);
+      const shapedBrief = await requestProjectIntake({
+        mode: "organize",
+        inputText: [brief.sourceText, answer].filter(Boolean).join("\n"),
+        files: brief.files || [],
+        brief,
+        messages: existingMessages,
+      });
+      const nextBrief = applyFinalReviewState(shapedBrief, shapedBrief.assistantMessage);
+      const turnBrief = attachNextTurn(nextBrief);
+      const assistantText = turnBrief.assistantMessage || C.fallbackAssistantMessage(turnBrief);
+      mergeInferredProgress(turnBrief);
+      localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(turnBrief));
+      saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: assistantText }]);
       render();
       return;
     }
 
     const pendingMessages = [...existingMessages, { role: "user", text: answer }, { role: "assistant", text: "That helps. I’m updating the brief..." }];
+    localStorage.setItem("skillnestGeneratedBrief", JSON.stringify({
+      ...brief,
+      nextQuestion: { key: "loading", prompt: "", suggestions: [], placeholder: "" },
+      activeQuestion: "",
+    }));
     saveAssistantMessages(pendingMessages);
     render();
 
-    const result = await requestProjectAssistant({
+    let result = await requestProjectAssistant({
       brief,
       messages: existingMessages,
+      conversation_state: {
+        ...state,
+        active_turn: activeTurn,
+        resolved_answer: resolution ? {
+          section_id: resolution.sectionId,
+          expected_answer_type: resolution.expectedType,
+          normalized_value: resolution.normalizedValue,
+          fields_updated: resolution.fieldsUpdated,
+        } : null,
+      },
       key,
       sectionId,
       answer,
+      quickReplyAnswer,
+      turn: activeTurn,
     });
 
-    const nextBrief = normalizeProjectBrief(result.brief || result, { mode: "clarify", brief });
-    const assistantText = result.assistantMessage || result.assistant_message || nextBrief.assistantMessage || C.fallbackAssistantMessage(nextBrief);
+    console.log("[Hatch Bug] DeepSeek parsed:", result);
+    console.log("[Hatch Bug] briefUpdates:", result.brief_updates || result.briefUpdates || result.section_updates || {});
+    console.log("[Hatch Bug] fieldsUpdated:", result.fields_updated || result.fieldsUpdated || []);
+    console.log("[Hatch Bug] nextQuestion:", result.next_question || result.nextQuestion || "");
+    console.log("[Hatch Bug] missingInfo:", result.missing_info || result.missingInfo || result.missing_fields || []);
+
+    let normalizedBrief = mergeResolvedAnswer(normalizeProjectBrief(result.brief || result, { mode: "clarify", brief }), resolution);
+    let assistantText = result.assistantMessage || result.assistant_message || normalizedBrief.assistantMessage || C.fallbackAssistantMessage(normalizedBrief);
+    const previousAssistantText = state.previous_assistant_message || "";
+    let duplicateBlocked = false;
+    const nextQuestionText = result.next_question || result.nextQuestion || normalizedBrief.nextQuestion?.prompt || "";
+    const duplicateQuestion = answeredCurrentTurn && isSameQuestion(state.active_question, nextQuestionText);
+    const duplicateMessage = isDuplicateAssistantMessage(previousAssistantText, assistantText);
+    if (duplicateQuestion || duplicateMessage) {
+      duplicateBlocked = true;
+      console.warn("[Hatch Bug] duplicate assistant message blocked:", assistantText);
+      result = await requestProjectAssistant({
+        brief: resolution?.brief || brief,
+        messages: existingMessages,
+        conversation_state: {
+          ...state,
+          active_turn: activeTurn,
+          resolved_answer: resolution ? {
+            section_id: resolution.sectionId,
+            expected_answer_type: resolution.expectedType,
+            normalized_value: resolution.normalizedValue,
+            fields_updated: resolution.fieldsUpdated,
+          } : null,
+          duplicate_retry_instruction: `The user already answered this question: ${answer}. Save it and ask the next unresolved question.`,
+        },
+        key,
+        sectionId,
+        answer,
+        quickReplyAnswer,
+        turn: activeTurn,
+        duplicateRetry: true,
+      });
+      console.log("[Hatch Bug] DeepSeek retry parsed:", result);
+      normalizedBrief = mergeResolvedAnswer(normalizeProjectBrief(result.brief || result, { mode: "clarify", brief }), resolution);
+      assistantText = result.assistantMessage || result.assistant_message || normalizedBrief.assistantMessage || C.fallbackAssistantMessage(normalizedBrief);
+      const retryQuestionText = result.next_question || result.nextQuestion || normalizedBrief.nextQuestion?.prompt || "";
+      if ((answeredCurrentTurn && isSameQuestion(state.active_question, retryQuestionText)) || isDuplicateAssistantMessage(previousAssistantText, assistantText)) {
+        const recovered = applyAnsweredQuestionLocally(brief, state, answer);
+        if (recovered) {
+          localStorage.setItem("hatchAiIntakeMode", "local-fallback");
+          localStorage.setItem("hatchAiLastError", "Local fallback is being used. DeepSeek repeated its previous response.");
+          window.HatchAIController?.writeState?.({
+            fallbackUsed: true,
+            lastProvider: "Local fallback",
+            lastModel: "",
+            lastIntent: "DUPLICATE_FALLBACK",
+            lastUserMessage: answer,
+            lastAssistantSource: "local-fallback",
+            lastError: "Local fallback is being used. DeepSeek repeated its previous response.",
+            duplicateBlocked: true,
+          });
+          normalizedBrief = recovered;
+          assistantText = recovered.assistantMessage;
+        }
+      }
+    }
+    let nextBrief = attachNextTurn(applyFinalReviewState(normalizedBrief, assistantText));
+    const lastStoredAssistantText = [...existingMessages].reverse().find((message) => message.role === "assistant")?.text || "";
+    const finalAssistantText = nextBrief.assistantMessage || assistantText;
+    if (answeredCurrentTurn && isDuplicateAssistantMessage(lastStoredAssistantText, finalAssistantText)) {
+      duplicateBlocked = true;
+      console.warn("[Hatch Bug] final duplicate render blocked:", finalAssistantText);
+      const recovered = recoveredBriefAfterDuplicate(brief, state, answer, resolution);
+      if (recovered) {
+        localStorage.setItem("hatchAiIntakeMode", "local-fallback");
+        localStorage.setItem("hatchAiLastError", "Local fallback is being used. DeepSeek repeated its previous response.");
+        nextBrief = attachNextTurn(applyFinalReviewState(recovered, recovered.assistantMessage));
+        assistantText = nextBrief.assistantMessage || recovered.assistantMessage;
+        window.HatchAIController?.writeState?.({
+          fallbackUsed: true,
+          lastProvider: "Local fallback",
+          lastModel: "",
+          lastIntent: "FINAL_DUPLICATE_FALLBACK",
+          lastUserMessage: answer,
+          lastAssistantSource: "local-fallback",
+          lastError: "Local fallback is being used. DeepSeek repeated its previous response.",
+          duplicateBlocked: true,
+        });
+      }
+    }
     mergeInferredProgress(nextBrief);
+    const fieldsUpdated = [
+      ...(result.fields_updated || result.fieldsUpdated || []),
+      ...(nextBrief.fieldsUpdated || []),
+      ...(resolution?.fieldsUpdated || []),
+    ].filter(Boolean);
+    const missingInfoAfter = nextBrief.missingInfo || [];
+    debugFlow("after DeepSeek reply", {
+      updated_section: nextBrief.completedSectionId || nextBrief.activeSection || sectionId,
+      fallback_used: localStorage.getItem("hatchAiIntakeMode") !== "connected",
+      next_section: nextBrief.activeSection || nextBrief.nextQuestion?.key || "",
+      readiness: nextBrief.readiness,
+      duplicate_blocked: duplicateBlocked,
+      missing_before: missingInfoBefore,
+      missing_after: missingInfoAfter,
+    });
+    console.log("[Hatch Bug] activeSection after:", nextBrief.activeSection || nextBrief.nextQuestion?.key || "");
+    console.log("[Hatch Bug] missingInfo after:", missingInfoAfter);
+    window.HatchAIController?.writeState?.({
+      activeQuestion: nextBrief.activeQuestion || nextBrief.nextQuestion?.prompt || "",
+      activeSection: nextBrief.activeSection || sectionId,
+      expectedAnswerType: nextBrief.expectedAnswerType || nextBrief.nextQuestion?.key || key,
+      lastUserMessage: answer,
+      lastFieldsUpdated: fieldsUpdated,
+      missingInfoBefore,
+      missingInfoAfter,
+      lastNextQuestion: nextBrief.nextQuestion?.prompt || "",
+      duplicateBlocked,
+      activeTurn: nextBrief.currentTurn || null,
+    });
     localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
-    saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: assistantText }]);
+    saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: nextBrief.assistantMessage || assistantText }]);
+    if (nextBrief.stage === "ready_to_post") {
+      render();
+      return;
+    }
     if (nextBrief.completedSectionId) {
       const completed = new Set(completedSections());
       completed.add(nextBrief.completedSectionId);
       localStorage.setItem("hatchCompletedSections", JSON.stringify([...completed]));
-      moveToNextSection();
+      render();
       return;
     }
     render();
@@ -1464,6 +2067,7 @@ window.SkillNestApp = (() => {
     if (key === "title") nextBrief.title = scalarValue;
     if (key === "summary") nextBrief.summary = scalarValue;
     if (key === "businessType") nextBrief.businessType = scalarValue;
+    if (key === "audience") nextBrief.audience = scalarValue;
     if (key === "industry") nextBrief.industry = scalarValue;
     if (key === "suggestedBudget") {
       nextBrief.suggestedBudget = scalarValue;
@@ -1481,6 +2085,11 @@ window.SkillNestApp = (() => {
     const missing = new Set(nextBrief.missingInfo || []);
     if (nextBrief.title && nextBrief.summary) missing.delete("objective");
     if (nextBrief.businessType || nextBrief.industry) missing.delete("industry");
+    if (nextBrief.audience) {
+      missing.delete("audience");
+      missing.delete("school type");
+      missing.delete("target audience");
+    }
     if (nextBrief.deliverables?.length) missing.delete("deliverables");
     if (nextBrief.suggestedBudget) missing.delete("budget");
     if (nextBrief.suggestedTimeline) missing.delete("timeline");
@@ -1542,7 +2151,109 @@ window.SkillNestApp = (() => {
     return {
       suggestedTimeline: "timeline",
       suggestedBudget: "budget",
+      businessType: "business",
+      title: "project",
+      summary: "goal",
     }[sectionId] || sectionId;
+  }
+
+  function expectedTypeFromQuestion(question = "", fallback = "general") {
+    const text = String(question || "").toLowerCase();
+    if (text.includes("budget") || text.includes("$") || text.includes("price")) return "budget";
+    if (text.includes("timeline") || text.includes("deadline") || text.includes("when") || text.includes("finished")) return "timeline";
+    if (text.includes("deliver") || text.includes("output") || text.includes("hand back")) return "deliverables";
+    if (text.includes("who is this for") || text.includes("audience") || text.includes("school") || text.includes("students")) return "audience";
+    if (text.includes("app name") || text.includes("business name") || text.includes("brand name") || text.includes("name of your app") || text.includes("app or business")) return "business_name";
+    if (text.includes("industry") || text.includes("business") || text.includes("company") || text.includes("cafe") || text.includes("restaurant")) return "business";
+    if (text.includes("reference") || text.includes("file") || text.includes("example") || text.includes("materials")) return "references";
+    if (text.includes("constraint") || text.includes("tone") || text.includes("style")) return "constraints";
+    return fallback;
+  }
+
+  function conversationState(brief = {}, messages = [], latestAnswer = "") {
+    const activeSection = sectionIdFromUpdateKey(brief.activeSection || brief.nextQuestion?.key || activeSectionId());
+    const activeQuestion = brief.activeQuestion || brief.nextQuestion?.prompt || "";
+    const previousAssistantMessage = [...messages].reverse().find((message) => message.role === "assistant")?.text || "";
+    const expectedAnswerType = expectedTypeFromQuestion(
+      activeQuestion,
+      brief.expectedAnswerType || assistantKeyForSection(activeSection),
+    );
+    return {
+      active_section: activeSection,
+      active_question: activeQuestion,
+      expected_answer_type: expectedAnswerType,
+      brief,
+      conversation_history: messages,
+      previous_assistant_message: previousAssistantMessage,
+      latest_user_message: latestAnswer,
+      missing_fields: brief.missingInfo || [],
+      readiness: brief.readiness || brief.stage || "needs_context",
+      last_assistant_intent: brief.lastAssistantIntent || "",
+      last_user_answer: latestAnswer,
+    };
+  }
+
+  function requiredHatchFieldsComplete(brief = {}) {
+    const hasText = (value) => String(value || "").trim().length > 0;
+    const hasList = (value) => Array.isArray(value) && value.filter(Boolean).length > 0;
+    return Boolean(
+      hasText(brief.title)
+      && hasText(brief.summary)
+      && (hasText(brief.clientContext) || hasText(brief.businessType) || hasText(brief.industry))
+      && (hasList(brief.scope) || hasList(brief.deliverables))
+      && hasList(brief.deliverables)
+      && hasText(brief.suggestedBudget)
+      && hasText(brief.suggestedTimeline)
+    );
+  }
+
+  function readinessTriggersFinalReview(brief = {}, assistantText = "") {
+    const readiness = String(brief.readiness || brief.stage || "").toLowerCase();
+    const canSubmit = brief.canSubmit === true || brief.can_submit === true || brief.readyToSubmit === true || brief.stage === "ready_to_post";
+    const missingInfo = Array.isArray(brief.missingInfo) ? brief.missingInfo.filter(Boolean) : [];
+    const messageReady = /ready to post|brief is ready|finalize the brief/i.test(assistantText || brief.assistantMessage || "");
+    const allRequiredComplete = requiredHatchFieldsComplete(brief);
+    const finalReviewTriggered = Boolean(
+      /ready_to_post|ready to post/.test(readiness)
+      || canSubmit
+      || messageReady
+      || (brief.isValidProject && missingInfo.length === 0)
+      || allRequiredComplete
+    );
+
+    console.log("[Hatch Flow] readiness:", brief.readiness || brief.stage || "");
+    console.log("[Hatch Flow] canSubmit:", canSubmit);
+    console.log("[Hatch Flow] missingInfo:", missingInfo);
+    console.log("[Hatch Flow] finalReviewTriggered:", finalReviewTriggered);
+
+    return finalReviewTriggered;
+  }
+
+  function cleanFinalAssistantMessage(message = "") {
+    const clean = String(message || "").replace(/\b(if not,\s*)?I[’']ll submit it\.?/gi, "If this looks good, you can submit it next.");
+    if (/ready to post|brief is ready|finalize the brief/i.test(clean)) {
+      return clean || "Your Hatch is ready. If this looks good, you can submit it next.";
+    }
+    return "Your Hatch is ready. If this looks good, you can submit it next.";
+  }
+
+  function applyFinalReviewState(brief = {}, assistantText = "") {
+    if (!brief?.ok || localStorage.getItem("hatchFinalReviewDismissed") === "true") return brief;
+    if (!readinessTriggersFinalReview(brief, assistantText)) return brief;
+    const ids = briefSectionIds();
+    setActiveSectionIndex(ids.length);
+    localStorage.setItem("hatchCompletedSections", JSON.stringify(ids));
+    localStorage.removeItem("hatchBriefEditKey");
+    localStorage.removeItem("hatchShowFinalEditSections");
+    return {
+      ...brief,
+      stage: "ready_to_post",
+      readiness: "Ready to Post",
+      canSubmit: true,
+      missingInfo: [],
+      nextQuestion: { key: "review", prompt: "", suggestions: [], placeholder: "" },
+      assistantMessage: cleanFinalAssistantMessage(assistantText || brief.assistantMessage),
+    };
   }
 
   function confirmSection(sectionId) {
@@ -1707,6 +2418,7 @@ window.SkillNestApp = (() => {
       const size = file.size ? `${Math.ceil(file.size / 1024)} KB` : "Size unavailable";
       const type = file.type || "file";
       const materialType = file.materialType || "Other material";
+      const sessionUrl = file.objectUrl || (file.sessionId ? fileObjectUrls.get(file.sessionId) : "");
       return `
         <article class="file-preview">
           <div>
@@ -1719,6 +2431,11 @@ window.SkillNestApp = (() => {
                 ${labelOptions.includes(materialType) ? "" : `<option value="${C.escapeHtml(materialType)}" selected>${C.escapeHtml(materialType)}</option>`}
               </select>
             </label>
+          </div>
+          <div class="file-preview-actions">
+            ${sessionUrl ? `<button class="btn ghost small" type="button" onclick="SkillNestApp.previewDraftFile(${index})">Preview</button>` : ""}
+            ${sessionUrl ? `<button class="btn ghost small" type="button" onclick="SkillNestApp.downloadDraftFile(${index})">Download</button>` : ""}
+            ${sessionUrl ? "" : `<span class="file-unavailable">Preview after reload needs real storage</span>`}
           </div>
           <button class="btn ghost small danger" type="button" onclick="SkillNestApp.removeDraftFile(${index})">Remove</button>
         </article>
@@ -1781,6 +2498,65 @@ window.SkillNestApp = (() => {
     syncFilesIntoBrief(files);
     renderFilePreviews();
     if (currentRoute() === "task-review") render();
+  }
+
+  function sessionUrlForFile(file) {
+    if (!file) return "";
+    if (file.sessionId) return fileObjectUrls.get(file.sessionId) || "";
+    return file.objectUrl || "";
+  }
+
+  function previewFileObject(file) {
+    const url = sessionUrlForFile(file);
+    if (!url) {
+      window.alert("Preview is only available during the upload session. A real version would store files in secure cloud storage.");
+      return;
+    }
+    window.open(url, "_blank", "noopener");
+  }
+
+  function downloadFileObject(file) {
+    const url = sessionUrlForFile(file);
+    if (!url) {
+      window.alert("Download is only available during the upload session in this MVP.");
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file.name || "hatch-file";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  function previewDraftFile(index) {
+    previewFileObject(hydrateSessionFiles(readJson("skillnestDraftFiles", []))[index]);
+  }
+
+  function downloadDraftFile(index) {
+    downloadFileObject(hydrateSessionFiles(readJson("skillnestDraftFiles", []))[index]);
+  }
+
+  function previewTaskFile(taskId, index) {
+    const task = marketplaceTasks().find((item) => item.id === taskId);
+    previewFileObject(task?.files?.[index]);
+  }
+
+  function downloadTaskFile(taskId, index) {
+    const task = marketplaceTasks().find((item) => item.id === taskId);
+    downloadFileObject(task?.files?.[index]);
+  }
+
+  function removePostedTaskFile(taskId, index) {
+    const postedTasks = getPostedTasks();
+    const taskIndex = postedTasks.findIndex((task) => task.id === taskId);
+    if (taskIndex < 0) return;
+    const files = Array.isArray(postedTasks[taskIndex].files) ? [...postedTasks[taskIndex].files] : [];
+    files.splice(index, 1);
+    postedTasks[taskIndex] = { ...postedTasks[taskIndex], files };
+    localStorage.setItem("skillnestPostedTasks", JSON.stringify(postedTasks));
+    render();
+    openTaskDetail(taskId);
   }
 
   function useTaskChip(text) {
@@ -1956,12 +2732,20 @@ window.SkillNestApp = (() => {
   function handleTaskFiles(event) {
     const existing = readJson("skillnestDraftFiles", []);
     const materialType = localStorage.getItem("hatchPendingFileMaterial") || "Other material";
-    const files = [...event.target.files].map((file) => ({
-      name: file.name,
-      type: file.type || "file",
-      size: file.size || 0,
-      materialType,
-    }));
+    const files = [...event.target.files].map((file) => {
+      const sessionId = `file-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const objectUrl = URL.createObjectURL(file);
+      // MVP note: object URLs are session-only. Production needs backend/object storage.
+      fileObjectUrls.set(sessionId, objectUrl);
+      return {
+        name: file.name,
+        type: file.type || "file",
+        size: file.size || 0,
+        materialType,
+        sessionId,
+        objectUrl,
+      };
+    });
     const nextFiles = [...existing, ...files];
     localStorage.setItem("skillnestDraftFiles", JSON.stringify(nextFiles));
     localStorage.removeItem("hatchPendingFileMaterial");
@@ -1986,6 +2770,10 @@ window.SkillNestApp = (() => {
 
   function removeDraftFile(index) {
     const files = readJson("skillnestDraftFiles", []);
+    const removed = files[index];
+    const url = removed?.sessionId ? fileObjectUrls.get(removed.sessionId) : removed?.objectUrl;
+    if (url) URL.revokeObjectURL(url);
+    if (removed?.sessionId) fileObjectUrls.delete(removed.sessionId);
     files.splice(index, 1);
     localStorage.setItem("skillnestDraftFiles", JSON.stringify(files));
     const summary = document.getElementById("fileSummary");
@@ -2015,6 +2803,7 @@ window.SkillNestApp = (() => {
       id: `hatch-${Date.now()}`,
       title: brief.title || "New Hatch",
       business: brief.businessType || industry,
+      clientContext: brief.clientContext || brief.businessType || industry,
       objective: brief.summary || "Create a practical solution.",
       description: brief.summary || "",
       budget: brief.suggestedBudget || "Flexible / needs guidance",
@@ -2022,21 +2811,84 @@ window.SkillNestApp = (() => {
       timeline: brief.suggestedTimeline || "Flexible",
       estimatedCompletion: brief.suggestedTimeline || "Flexible",
       industry,
-      category: industry,
+      category: brief.category || industry,
       level: brief.suggestedLevel || "L1",
       status: "New Hatch",
       deliverables: brief.deliverables || [],
+      scope: brief.scope || [],
       references: brief.references || [],
       constraints: brief.constraints || [],
+      missingInfo: brief.missingInfo || [],
       recommendedHatcherType: brief.recommendedHatcherType || brief.suggestedLevel || "L1",
       files,
       createdAt: new Date().toISOString(),
     };
   }
 
+  function hatchQualityIssues(brief = {}) {
+    const genericTitles = new Set(["content", "website", "presentation", "research", "operations", "design", "writing", "admin", "new hatch", "new project", "untitled hatch"]);
+    const issues = [];
+    const title = String(brief.title || "").trim();
+    const objective = String(brief.summary || "").trim();
+    const business = String(brief.businessType || brief.industry || "").trim();
+    const deliverables = Array.isArray(brief.deliverables) ? brief.deliverables.filter(Boolean) : [];
+    const scope = Array.isArray(brief.scope) ? brief.scope.filter(Boolean) : [];
+    const budget = String(brief.suggestedBudget || "").trim();
+    const timeline = String(brief.suggestedTimeline || "").trim();
+
+    if (!title || genericTitles.has(title.toLowerCase()) || title.length < 12) issues.push("specific title");
+    if (!objective || /practical hatch|practical project|usable result|ready for a hatcher/i.test(objective) || objective.length < 30) issues.push("useful objective");
+    if (!business || /general business|to be confirmed|client$/i.test(business)) issues.push("clear business context");
+    if (deliverables.length < 2 || deliverables.some((item) => /first usable version|clear delivery notes|editable final files/i.test(item))) issues.push("concrete deliverables");
+    if (scope.length < 2 || scope.some((item) => /review (the )?client brief|organize work|prepare final handoff notes/i.test(item))) issues.push("task-specific scope");
+    if (!budget) issues.push("budget");
+    if (!timeline) issues.push("timeline");
+    return issues;
+  }
+
+  function qualityGateMessage(issues = []) {
+    const first = issues[0] || "one more detail";
+    const labels = {
+      "specific title": "what exactly the Hatcher should deliver",
+      "useful objective": "the outcome you want",
+      "clear business context": "who this is for",
+      "concrete deliverables": "what should be handed back",
+      "task-specific scope": "what work should be included",
+      budget: "the rough budget",
+      timeline: "the timeline",
+    };
+    return `I want this Hatch to be clear enough for a Hatcher to start without guessing. The next thing I need is ${labels[first] || first}.`;
+  }
+
   function submitReviewedHatch() {
     const brief = getGeneratedBrief();
     if (!brief?.ok) return;
+    const qualityIssues = hatchQualityIssues(brief);
+    const inFinalReview = brief.stage === "ready_to_post"
+      || Number(localStorage.getItem("hatchActiveSectionIndex") || 0) >= briefSectionIds().length;
+    if (qualityIssues.length && !inFinalReview) {
+      const message = qualityGateMessage(qualityIssues);
+      localStorage.setItem("hatchActiveSectionIndex", String(Math.max(0, briefSectionIds().findIndex((id) => {
+        if (qualityIssues.includes("specific title")) return id === "title";
+        if (qualityIssues.includes("useful objective")) return id === "summary";
+        if (qualityIssues.includes("clear business context")) return id === "businessType" || id === "industry";
+        if (qualityIssues.includes("concrete deliverables")) return id === "deliverables";
+        if (qualityIssues.includes("task-specific scope")) return id === "deliverables";
+        if (qualityIssues.includes("budget")) return id === "suggestedBudget";
+        if (qualityIssues.includes("timeline")) return id === "suggestedTimeline";
+        return false;
+      }))));
+      saveAssistantMessages([...getAssistantMessages(), { role: "assistant", text: message }]);
+      localStorage.setItem("skillnestGeneratedBrief", JSON.stringify({
+        ...brief,
+        missingInfo: [...new Set([...(brief.missingInfo || []), ...qualityIssues])],
+        stage: "clarifying_missing_info",
+        readiness: "Almost Ready",
+        nextQuestion: { key: qualityIssues[0], prompt: message, suggestions: [], placeholder: "Reply to Hatch" },
+      }));
+      render();
+      return;
+    }
     if (!isLoggedIn()) {
       localStorage.setItem("hatchPendingSubmit", "true");
       localStorage.setItem("hatchAuthReturn", "submit-reviewed-hatch");
@@ -2050,6 +2902,7 @@ window.SkillNestApp = (() => {
     localStorage.setItem("hatchBrowseNotice", "Your Hatch has been submitted and is now listed here.");
     localStorage.removeItem("hatchPendingSubmit");
     localStorage.removeItem("hatchAuthReturn");
+    localStorage.removeItem("hatchFinalReviewDismissed");
     clearTaskDraft({ redirect: false });
     setRoute("browse");
   }
@@ -2060,6 +2913,30 @@ window.SkillNestApp = (() => {
     render();
   }
 
+  function continueChattingFromFinal() {
+    const brief = getGeneratedBrief();
+    if (!brief?.ok) return;
+    localStorage.setItem("hatchFinalReviewDismissed", "true");
+    localStorage.setItem("hatchShowFinalEditSections", "false");
+    setActiveSectionIndex(Math.max(0, briefSectionIds().length - 1));
+    const nextBrief = {
+      ...brief,
+      stage: "clarifying_missing_info",
+      readiness: "Almost Ready",
+      canSubmit: false,
+      nextQuestion: {
+        key: "review",
+        prompt: "What would you like to adjust before submitting?",
+        suggestions: [],
+        placeholder: "Tell Hatch what to refine",
+      },
+      assistantMessage: "No problem. Tell me what you’d like to change, and I’ll update the brief.",
+    };
+    localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
+    saveAssistantMessages([...getAssistantMessages(), { role: "assistant", text: nextBrief.assistantMessage }]);
+    render();
+  }
+
   function toggleFinalEditList() {
     const current = localStorage.getItem("hatchShowFinalEditSections") === "true";
     localStorage.setItem("hatchShowFinalEditSections", current ? "false" : "true");
@@ -2067,6 +2944,7 @@ window.SkillNestApp = (() => {
   }
 
   function editFinalSection(sectionId) {
+    localStorage.removeItem("hatchFinalReviewDismissed");
     localStorage.setItem("hatchReturnToFinalReview", "true");
     localStorage.setItem("hatchShowFinalEditSections", "false");
     editSection(sectionId);
@@ -2083,6 +2961,7 @@ window.SkillNestApp = (() => {
     localStorage.removeItem("hatchBriefEditKey");
     localStorage.removeItem("hatchShowFinalEditSections");
     localStorage.removeItem("hatchReturnToFinalReview");
+    localStorage.removeItem("hatchFinalReviewDismissed");
     if (options.redirect !== false) setRoute("home");
   }
 
@@ -2216,6 +3095,7 @@ window.SkillNestApp = (() => {
     }
     const task = marketplaceTasks().find((item) => item.id === taskId);
     if (!task) return;
+    if (C.statusInfo(task.status).label === "Hatched") return;
     saveListItem("skillnestMissions", { ...task, status, updatedAt: new Date().toISOString() }, "id");
     updateTaskCardState(taskId, status);
     const feedback = document.getElementById("taskFeedback");
@@ -2231,6 +3111,7 @@ window.SkillNestApp = (() => {
     const task = marketplaceTasks().find((item) => item.id === pending.taskId);
     localStorage.removeItem("hatchPendingMission");
     if (!task) return false;
+    if (C.statusInfo(task.status).label === "Hatched") return false;
     const status = pending.status || "Saved";
     saveListItem("skillnestMissions", { ...task, status, updatedAt: new Date().toISOString() }, "id");
     localStorage.setItem(
@@ -2341,6 +3222,56 @@ window.SkillNestApp = (() => {
     if (operator) openModal(C.operatorDetail(operator));
   }
 
+  function openVerifiedProject(workId) {
+    const work = completedHatches.find((item) => item.id === workId);
+    if (work) openModal(C.verifiedProjectDetail(work));
+  }
+
+  function openVerifiedHatcherProfile(profileId) {
+    const profile = hatcherProfiles.find((item) => item.id === profileId);
+    if (profile) openModal(C.verifiedHatcherProfile(profile));
+  }
+
+  function shareToast(message) {
+    let toast = document.getElementById("shareToast");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = "shareToast";
+      toast.className = "share-toast";
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.add("show");
+    window.clearTimeout(shareToast.timeoutId);
+    shareToast.timeoutId = window.setTimeout(() => toast.classList.remove("show"), 2200);
+  }
+
+  async function shareVerifiedWork(workId) {
+    const work = completedHatches.find((item) => item.id === workId);
+    if (!work) return;
+
+    const shareUrl = `${window.location.origin}${window.location.pathname}#verified-work`;
+    const shareText = `${work.title}\n${work.outcome}\n${shareUrl}`;
+    const payload = {
+      title: `Hatch Verified Work: ${work.title}`,
+      text: work.outcome,
+      url: shareUrl,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(payload);
+        shareToast("Share sheet opened.");
+        return;
+      }
+      await navigator.clipboard.writeText(shareText);
+      shareToast("Share text copied.");
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+      shareToast("Share was not available.");
+    }
+  }
+
   function openModal(markup) {
     let root = document.getElementById("modalRoot");
     if (!root) {
@@ -2363,6 +3294,14 @@ window.SkillNestApp = (() => {
     panel?.querySelectorAll("[data-tab-panel]").forEach((item) => {
       item.classList.toggle("show", item.dataset.tabPanel === tabName);
     });
+  }
+
+  async function testDeepSeekConnection() {
+    const startedAt = performance.now();
+    const result = await window.HatchAIController.testDeepSeekConnection();
+    result.responseTimeMs = Math.round(performance.now() - startedAt);
+    console.info("[Hatch AI] DeepSeek connection test", result);
+    return result;
   }
 
   function scrollAssistantToLatest() {
@@ -2394,6 +3333,8 @@ window.SkillNestApp = (() => {
         ? Pages.trustPage()
       : route === "browse"
         ? Pages.browsePage(marketplaceTasks())
+      : route === "verified-work"
+        ? Pages.verifiedWorkPage()
       : route === "profile"
         ? (isLoggedIn() ? Pages.profilePage(account, getPostedTasks(), getMissions(), getOperatorApplications()) : Pages.authPage())
       : Pages.homePage(draftTask, files);
@@ -2419,6 +3360,7 @@ window.SkillNestApp = (() => {
     completeSignup,
     confirmTaskReview,
     confirmSection,
+    continueChattingFromFinal,
     addCustomChoice,
     attachReferenceMaterial,
     cancelBriefEdit,
@@ -2426,20 +3368,29 @@ window.SkillNestApp = (() => {
     editBriefField,
     editFinalSection,
     editSection,
+    downloadDraftFile,
+    downloadTaskFile,
     handleTaskFiles,
     handleAssistantReplyKey,
+    handleAssistantTurn,
     logout,
     openOperatorProfile,
     openTaskDetail,
+    openVerifiedHatcherProfile,
+    openVerifiedProject,
     pauseVoiceInput,
+    previewDraftFile,
+    previewTaskFile,
     quickTestLogin,
     removeMission,
     removeCustomChoice,
     removeDraftFile,
+    removePostedTaskFile,
     render,
     saveMission,
     saveHatchDraft,
     setRoute,
+    shareVerifiedWork,
     showOperatorTab,
     simulateVoiceInput,
     socialLogin,
@@ -2448,6 +3399,7 @@ window.SkillNestApp = (() => {
     submitReviewedHatch,
     submitTask,
     sendAssistantReply,
+    testDeepSeekConnection,
     moveToNextSection,
     deleteVoiceTranscript,
     rewriteSection,
@@ -2465,3 +3417,4 @@ window.SkillNestApp = (() => {
 })();
 
 SkillNestApp.render();
+window.testDeepSeekConnection = SkillNestApp.testDeepSeekConnection;
