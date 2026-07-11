@@ -3582,6 +3582,16 @@ html.dark-mode .dark-mode-toggle:hover {
   background: #f2f4f7;
 }
 
+html.dark-mode .btn.secondary {
+  background: #fffdf8;
+  border-color: #fffdf8;
+  color: #101828;
+}
+
+html.dark-mode .btn.secondary:hover {
+  background: #f2f4f7;
+}
+
 .reveal {
   opacity: 0;
   transform: translateY(10px);
