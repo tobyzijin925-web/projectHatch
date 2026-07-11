@@ -1214,7 +1214,7 @@ window.SkillNestComponents = (() => {
       <header class="topbar">
         <nav class="nav" aria-label="Primary navigation">
           <a class="brand" href="#home" aria-label="Hatch home">
-            <img class="brand-logo" src="assets/hatchlogo.png?v=2" alt="Hatch logo" />
+            <img class="brand-logo" src="${document.documentElement.classList.contains("dark-mode") ? "assets/hatchlogo-dark.png" : "assets/hatchlogo.png"}?v=2" alt="Hatch logo" />
           </a>
           <div class="nav-links">
             <a href="#browse" class="${active === "browse" ? "active" : ""}">Hatches</a>
