@@ -89,7 +89,7 @@ window.SkillNestPages = (() => {
               <span>Level</span>
               <select id="levelFilter" onchange="SkillNestApp.applyTaskFilters()">
                 <option value="">All levels</option>
-                ${uniqueLevels.map((level) => `<option value="${level}">${level}</option>`).join("")}
+                ${uniqueLevels.map((level) => `<option value="${level}">${C.levelName(level)}</option>`).join("")}
               </select>
             </label>
             <label>
@@ -270,7 +270,7 @@ window.SkillNestPages = (() => {
               <p>${C.escapeHtml(item.category || item.industry || item.business || "")} ${item.budget ? `&middot; ${C.escapeHtml(item.budget)}` : ""}</p>
             </div>
             <div class="mission-actions">
-              <span>${C.escapeHtml(item.status || item.level || "Open")}</span>
+              <span>${C.escapeHtml(item.status || (item.level ? C.levelName(item.level) : "") || "Open")}</span>
               ${removable ? `<button class="btn ghost small danger" type="button" onclick="SkillNestApp.${removeHandler}('${item.id || encodeURIComponent(item.title)}')">${removeLabel}</button>` : ""}
             </div>
           </article>
@@ -385,11 +385,11 @@ window.SkillNestPages = (() => {
             <div class="section-head">
               <div>
                 <h2>Hatch Levels</h2>
-                <p class="section-kicker">Hatches are grouped by complexity so Hatchers build up from simpler work.</p>
+                <p class="section-kicker">Hatches are sized like eggs — quail, chicken, goose, then ostrich — so Hatchers build up from simpler work.</p>
               </div>
             </div>
             <div class="level-grid mature-grid">
-              ${levels.map(([level, title, text]) => `<article class="level-card"><span>${level}</span><h3>${title}</h3><p>${text}</p></article>`).join("")}
+              ${levels.map(([level, title, text]) => `<article class="level-card"><span>🥚</span><h3>${C.levelName(level)} <span class="level-code">${level}</span></h3><p class="level-subtitle">${title}</p><p>${text}</p></article>`).join("")}
             </div>
           </div>
           <div class="trust-block">

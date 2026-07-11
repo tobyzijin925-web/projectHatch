@@ -1,5 +1,13 @@
 window.SkillNestComponents = (() => {
-  const { taskChips, operators, hatchedWork, completedHatches, hatcherProfiles } = window.SkillNestData;
+  const { taskChips, operators, hatchedWork, completedHatches, hatcherProfiles, levelEggs } = window.SkillNestData;
+
+  function levelName(level = "") {
+    const code = String(level).match(/^L[1-4]/)?.[0];
+    const egg = code && levelEggs[code];
+    if (!egg) return level;
+    const suffix = String(level).slice(code.length).trim();
+    return suffix ? `${egg} ${suffix}` : egg;
+  }
 
   function escapeHtml(value = "") {
     return String(value)
@@ -376,7 +384,7 @@ window.SkillNestComponents = (() => {
         !timeline ? "timeline" : "",
         !references.length ? "references" : "",
       ].filter(Boolean),
-      recommendedHatcherType: level === "L3" || level === "L4" ? `${level} specialist Hatcher` : `${level} practical Hatcher`,
+      recommendedHatcherType: level === "L3" || level === "L4" ? `${levelName(level)} specialist Hatcher` : `${levelName(level)} practical Hatcher`,
       summary: suggestedObjective(cleanText, industry, category),
       sourceText: cleanText,
       files,
@@ -566,7 +574,7 @@ window.SkillNestComponents = (() => {
     if (!brief?.ok) return "";
     return `
       <div class="preview-head">
-        <span class="tag level">${brief.suggestedLevel}</span>
+        <span class="tag level">${levelName(brief.suggestedLevel)}</span>
         <span class="tag">${brief.industry}</span>
         <span class="tag">${brief.category}</span>
       </div>
@@ -833,7 +841,7 @@ window.SkillNestComponents = (() => {
     const hasValue = sectionHasValue(brief, section);
     const messages = readLocalJson("hatchSectionMessages", {})[section.id] || [];
     const editingControl = section.id === "suggestedLevel"
-      ? `<select id="${inputId}">${["L1", "L2", "L3", "L4"].map((level) => `<option value="${level}"${value === level ? " selected" : ""}>${level}</option>`).join("")}</select>`
+      ? `<select id="${inputId}">${["L1", "L2", "L3", "L4"].map((level) => `<option value="${level}"${value === level ? " selected" : ""}>${levelName(level)}</option>`).join("")}</select>`
       : section.multiline
         ? `<textarea id="${inputId}" rows="5" placeholder="No worries — tell me what you’d change.">${escapeHtml(value)}</textarea>`
         : `<input id="${inputId}" type="text" value="${escapeHtml(value)}" placeholder="No worries — tell me what you’d change." />`;
@@ -909,7 +917,7 @@ window.SkillNestComponents = (() => {
       ["Budget", brief.suggestedBudget || "Flexible"],
       ["Timeline", brief.suggestedTimeline || "Flexible"],
       ["Files / references", Array.isArray(brief.references) && brief.references.length ? brief.references.join(", ") : "No references provided"],
-      ["Recommended Hatcher level", brief.recommendedHatcherType || brief.suggestedLevel || "L1"],
+      ["Recommended Hatcher level", brief.recommendedHatcherType || levelName(brief.suggestedLevel || "L1")],
     ];
     return `
       <div class="final-review">
@@ -1356,7 +1364,7 @@ window.SkillNestComponents = (() => {
     return `
       <article class="task-card status-${status.className}" data-task-id="${task.id}" data-level="${task.level}" data-industry="${escapeHtml(task.industry)}" data-search="${escapeHtml(`${task.title} ${task.business} ${task.industry} ${category} ${task.status}`)}" onclick="SkillNestApp.openTaskDetail('${task.id}')">
         <div class="card-top">
-          <span class="level-ribbon">${task.level}</span>
+          <span class="level-ribbon">${levelName(task.level)}</span>
           ${statusBadge(task.status)}
         </div>
         <h3>${escapeHtml(task.title)}</h3>
@@ -1382,7 +1390,7 @@ window.SkillNestComponents = (() => {
           <div class="avatar">${operator.initials}</div>
           <div>
             <h3>${escapeHtml(operator.name)}</h3>
-            <p>${escapeHtml(operator.level)}</p>
+            <p>${escapeHtml(levelName(operator.level))}</p>
           </div>
         </div>
         <div class="metric-grid">
@@ -1415,7 +1423,7 @@ window.SkillNestComponents = (() => {
   function verifiedWorkCard(work) {
     const profile = hatcherForWork(work);
     const hatcherName = work.showProfile && profile ? profile.name : "Private Hatcher";
-    const hatcherMeta = work.showProfile && profile ? `${profile.level} · ${profile.specialization}` : "Profile hidden";
+    const hatcherMeta = work.showProfile && profile ? `${levelName(profile.level)} · ${profile.specialization}` : "Profile hidden";
     return `
       <article class="verified-feed-item">
         <div class="verified-feed-head">
@@ -1424,7 +1432,7 @@ window.SkillNestComponents = (() => {
           </button>
           <button class="verified-hatcher-link verified-hatcher-name" type="button" ${work.showProfile && profile ? `onclick="SkillNestApp.openVerifiedHatcherProfile('${profile.id}')"` : "disabled"}>
             <strong>${escapeHtml(hatcherName)}</strong>
-            <span>${escapeHtml(work.completedAt)} · ${escapeHtml(work.industry)} · ${escapeHtml(work.level)}</span>
+            <span>${escapeHtml(work.completedAt)} · ${escapeHtml(work.industry)} · ${escapeHtml(levelName(work.level))}</span>
           </button>
           <span class="verified-status">Verified delivery</span>
         </div>
@@ -1472,7 +1480,7 @@ window.SkillNestComponents = (() => {
     const profile = hatcherForWork(work);
     return modal(`
       <div class="detail-head">
-        <span class="level-ribbon">${escapeHtml(work.level)}</span>
+        <span class="level-ribbon">${escapeHtml(levelName(work.level))}</span>
         ${work.verifiedBadges.map((badge) => tag(badge, "verified-tag")).join("")}
       </div>
       <h1>${escapeHtml(work.title)}</h1>
@@ -1481,7 +1489,7 @@ window.SkillNestComponents = (() => {
         <div><span>Industry</span><strong>${escapeHtml(work.industry)}</strong></div>
         <div><span>Completed</span><strong>${escapeHtml(visibleCompletionTime(work))}</strong></div>
         <div><span>Rating</span><strong>${escapeHtml(work.rating)}</strong></div>
-        <div><span>Level</span><strong>${escapeHtml(work.level)}</strong></div>
+        <div><span>Level</span><strong>${escapeHtml(levelName(work.level))}</strong></div>
       </div>
       <h2>Client context</h2>
       <p>${escapeHtml(work.clientContext)}</p>
@@ -1498,7 +1506,7 @@ window.SkillNestComponents = (() => {
         <div class="avatar">${escapeHtml(profile?.initials || "H")}</div>
         <div>
           <strong>${escapeHtml(work.showProfile && profile ? profile.name : "Completed by private Hatcher")}</strong>
-          <p>${escapeHtml(work.showProfile && profile ? `${profile.level} · ${profile.specialization}` : "Profile hidden for this completed Hatch")}</p>
+          <p>${escapeHtml(work.showProfile && profile ? `${levelName(profile.level)} · ${profile.specialization}` : "Profile hidden for this completed Hatch")}</p>
         </div>
       </div>
       ${work.showProfile && profile ? `<button class="btn primary full" type="button" onclick="SkillNestApp.openVerifiedHatcherProfile('${profile.id}')">View Hatcher Profile</button>` : ""}
@@ -1512,7 +1520,7 @@ window.SkillNestComponents = (() => {
         <div class="avatar">${escapeHtml(profile.initials)}</div>
         <div>
           <h1>${escapeHtml(profile.name)}</h1>
-          <p>${escapeHtml(profile.level)} · ${escapeHtml(profile.specialization)}</p>
+          <p>${escapeHtml(levelName(profile.level))} · ${escapeHtml(profile.specialization)}</p>
         </div>
       </div>
       <div class="detail-grid proof-grid">
@@ -1603,10 +1611,11 @@ window.SkillNestComponents = (() => {
   }
 
   function levelReason(level, category) {
-    if (level === "L1") return "Recommended level: L1 — this is a simple support task with clear outputs and low setup risk.";
-    if (level === "L2") return `Recommended level: L2 — this requires practical ${String(category || "business").toLowerCase()} judgment and client-facing execution.`;
-    if (level === "L3") return "Recommended level: L3 — this involves setup, workflow logic, or stronger technical judgment.";
-    return "Recommended level: L4 — this would require advanced strategy or specialist oversight.";
+    const name = levelName(level);
+    if (level === "L1") return `Recommended tier: ${name} — this is a simple support task with clear outputs and low setup risk.`;
+    if (level === "L2") return `Recommended tier: ${name} — this requires practical ${String(category || "business").toLowerCase()} judgment and client-facing execution.`;
+    if (level === "L3") return `Recommended tier: ${name} — this involves setup, workflow logic, or stronger technical judgment.`;
+    return `Recommended tier: ${name} — this would require advanced strategy or specialist oversight.`;
   }
 
   function clientContextForTask(task, category) {
@@ -1634,7 +1643,7 @@ window.SkillNestComponents = (() => {
     const isPostedClientTask = String(task.id || "").startsWith("hatch-") || String(task.id || "").startsWith("posted-");
     return modal(`
       <div class="detail-head">
-        <span class="level-ribbon">${task.level}</span>
+        <span class="level-ribbon">${levelName(task.level)}</span>
         ${statusBadge(task.status)}
       </div>
       <h1>${escapeHtml(task.title)}</h1>
@@ -1644,7 +1653,7 @@ window.SkillNestComponents = (() => {
         <div><span>Business</span><strong>${escapeHtml(task.business)}</strong></div>
         <div><span>Category</span><strong>${escapeHtml(category)}</strong></div>
         <div><span>Estimated completion</span><strong>${escapeHtml(completion)}</strong></div>
-        <div><span>Level</span><strong>${escapeHtml(task.level)}</strong></div>
+        <div><span>Level</span><strong>${escapeHtml(levelName(task.level))}</strong></div>
       </div>
       <h2>Client context</h2>
       <p>${escapeHtml(task.clientContext || clientContextForTask(task, category))}</p>
@@ -1699,7 +1708,7 @@ window.SkillNestComponents = (() => {
         <div class="avatar">${operator.initials}</div>
         <div>
           <h1>${escapeHtml(operator.name)}</h1>
-          <p>${escapeHtml(operator.level)}</p>
+          <p>${escapeHtml(levelName(operator.level))}</p>
         </div>
       </div>
       <p>${escapeHtml(operator.bio)}</p>
@@ -1719,7 +1728,7 @@ window.SkillNestComponents = (() => {
           ${operator.offers.map((offer) => `
             <article>
               <strong>${escapeHtml(offer.title)}</strong>
-              <span>${escapeHtml(offer.industry)} · ${escapeHtml(offer.level)} · ${escapeHtml(offer.status)}</span>
+              <span>${escapeHtml(offer.industry)} · ${escapeHtml(levelName(offer.level))} · ${escapeHtml(offer.status)}</span>
             </article>
           `).join("")}
         </div>
@@ -1769,6 +1778,7 @@ window.SkillNestComponents = (() => {
     clarificationCardMarkup,
     isLowQualityProjectInput,
     isProjectReady,
+    levelName,
     recentlyHatchedSection,
     recentVerifiedWorkSection,
     modal,

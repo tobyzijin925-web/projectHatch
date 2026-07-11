@@ -536,4 +536,13 @@ window.SkillNestData = {
     ["L3", "Specialized Hatches", "More complex setup work like automations, content systems, and workflow improvements."],
     ["L4", "Advanced strategy", "Higher-trust strategic work. Coming later."],
   ],
+
+  // Fun display names for L1-L4, sized by real egg size (quail < chicken < goose < ostrich)
+  // so bigger eggs = bigger Hatches. The L-code stays the source of truth everywhere else.
+  levelEggs: {
+    L1: "Quail",
+    L2: "Chicken",
+    L3: "Goose",
+    L4: "Ostrich",
+  },
 };

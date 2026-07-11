@@ -1506,7 +1506,7 @@ dd {
   gap: 14px;
 }
 
-.level-card span {
+.level-card > span {
   display: grid;
   place-items: center;
   width: 44px;
@@ -1516,6 +1516,25 @@ dd {
   background: var(--accent-soft);
   color: var(--accent-dark);
   font-weight: 900;
+  font-size: 1.2rem;
+}
+
+.level-card .level-code {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  padding: 2px 7px;
+  border-radius: 999px;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+.level-card .level-subtitle {
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
 }
 
 .form-layout {

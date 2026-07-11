@@ -647,7 +647,7 @@ window.SkillNestApp = (() => {
       constraints: shouldUpdateBrief ? Array.isArray(sectionUpdates.constraints) && sectionUpdates.constraints.length ? sectionUpdates.constraints : constraints.length ? constraints : previous.constraints || [] : previous.constraints || [],
       references: shouldUpdateBrief ? sectionUpdates.references ? [sectionUpdates.references].flat().filter(Boolean) : references.length ? references : previous.references || [] : previous.references || [],
       missingInfo: missingFields,
-      recommendedHatcherType: (richUpdates.recommended_hatcher_level || rawBrief.operator_level) ? `${richUpdates.recommended_hatcher_level || rawBrief.operator_level} Hatcher` : previous.recommendedHatcherType || "",
+      recommendedHatcherType: (richUpdates.recommended_hatcher_level || rawBrief.operator_level) ? `${C.levelName(richUpdates.recommended_hatcher_level || rawBrief.operator_level)} Hatcher` : previous.recommendedHatcherType || "",
       summary: sectionUpdates.goal || rawBrief.goal || sourceFallback.summary || previous.summary || "",
       assistantMessage: response.assistant_message || response.assistantMessage || C.fallbackAssistantMessage(previous),
       fieldsUpdated,
@@ -1127,7 +1127,7 @@ window.SkillNestApp = (() => {
     }
     if (key === "budget") {
       const message = level === "L1"
-        ? "For an L1 Hatch, I’d start around $50-150. If you want more polish or several versions, $150-300 gives more room."
+        ? `For a ${C.levelName(level)} Hatch, I’d start around $50-150. If you want more polish or several versions, $150-300 gives more room.`
         : level === "L2"
           ? "For this kind of Hatch, $150-500 is a realistic range depending on how much detail you want."
           : "For a more technical Hatch, I’d expect at least $500 so the Hatcher can build and test it properly.";
@@ -2819,7 +2819,7 @@ window.SkillNestApp = (() => {
       references: brief.references || [],
       constraints: brief.constraints || [],
       missingInfo: brief.missingInfo || [],
-      recommendedHatcherType: brief.recommendedHatcherType || brief.suggestedLevel || "L1",
+      recommendedHatcherType: brief.recommendedHatcherType || C.levelName(brief.suggestedLevel || "L1"),
       files,
       createdAt: new Date().toISOString(),
     };
