@@ -1256,7 +1256,7 @@ window.SkillNestApp = (() => {
       return {
         key,
         prompt: "What kind of business or industry is this for?",
-        suggestions: ["Restaurant", "E-commerce", "Local services", "Education"],
+        suggestions: ["Restaurant", "E-commerce", "Local Services", "Education"],
         placeholder: "Type the business or industry",
       };
     }
@@ -3265,7 +3265,7 @@ window.SkillNestApp = (() => {
     const shareUrl = `${window.location.origin}${window.location.pathname}#verified-work`;
     const shareText = `${work.title}\n${work.outcome}\n${shareUrl}`;
     const payload = {
-      title: `Hatch Verified Work: ${work.title}`,
+      title: `Hatch Verified Results: ${work.title}`,
       text: work.outcome,
       url: shareUrl,
     };
