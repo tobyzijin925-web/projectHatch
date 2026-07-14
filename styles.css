@@ -3054,6 +3054,131 @@ dd {
   margin-bottom: 16px;
 }
 
+.form-grid.single-column {
+  grid-template-columns: 1fr;
+}
+
+.wizard-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.wizard-steps {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px;
+}
+
+.wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.wizard-step-num {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: white;
+  font-size: 0.8rem;
+}
+
+.wizard-step.active {
+  color: var(--ink);
+}
+
+.wizard-step.active .wizard-step-num {
+  border-color: var(--accent-dark);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.wizard-step.done {
+  color: var(--accent-dark);
+}
+
+.wizard-step.done .wizard-step-num {
+  border-color: rgba(24, 183, 122, 0.36);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.wizard-step-line {
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.wizard-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.wizard-actions .btn.primary {
+  flex: 1;
+}
+
+.wizard-success {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: center;
+}
+
+.wizard-success-mark {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 1.4rem;
+  font-weight: 900;
+}
+
+.wizard-success h2 {
+  margin: 0;
+}
+
+.wizard-success p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.google-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.google-mark {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: white;
+  border: 1px solid var(--line);
+  color: #4285f4;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
 .social-btn {
   width: 100%;
   padding: 0 14px;

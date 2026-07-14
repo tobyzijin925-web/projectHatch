@@ -223,14 +223,121 @@ window.SkillNestPages = (() => {
     `;
   }
 
-  function operatorPage(account) {
+  function operatorStepper(step) {
+    const steps = [
+      { id: "account", label: "Account" },
+      { id: "about", label: "About you" },
+      { id: "focus", label: "Focus areas" },
+    ];
+    const activeIndex = step === "done" ? steps.length : steps.findIndex((item) => item.id === step);
+    return `
+      <div class="wizard-steps" aria-label="Application progress">
+        ${steps.map((item, index) => {
+          const state = index < activeIndex ? "done" : index === activeIndex ? "active" : "";
+          return `
+          <div class="wizard-step ${state}">
+            <span class="wizard-step-num">${index < activeIndex ? "&#10003;" : index + 1}</span>
+            <span class="wizard-step-label">${item.label}</span>
+          </div>
+        `;
+        }).join(`<span class="wizard-step-line"></span>`)}
+      </div>
+    `;
+  }
+
+  function operatorAccountStep(account, loggedIn) {
+    const continueAs = loggedIn && account.email
+      ? `
+        <button class="btn primary full" type="button" onclick="SkillNestApp.operatorContinueLoggedIn()">Continue as ${C.escapeHtml(account.email)}</button>
+        <div class="auth-divider"><span>or use a different account</span></div>
+      `
+      : "";
+    return `
+      <form class="form-card auth-card" onsubmit="SkillNestApp.operatorAccountStep(event)">
+        ${continueAs}
+        <div class="social-auth" aria-label="Social sign up options">
+          <button class="social-btn google-btn" type="button" onclick="SkillNestApp.operatorGoogleSignup()">
+            <span class="google-mark" aria-hidden="true">G</span> Continue with Google
+          </button>
+        </div>
+        <div class="auth-divider"><span>or use email</span></div>
+        <div class="form-grid single-column">
+          ${C.field("Email", "operatorAuthEmail", "you@example.com", "email")}
+          ${C.field("Password", "operatorAuthPassword", "Create a password", "password")}
+        </div>
+        <button class="btn primary full" type="submit">Continue</button>
+        <p class="form-note">MVP preview: your account and the Google option are simulated locally on this device.</p>
+      </form>
+    `;
+  }
+
+  function operatorAboutStep(account, draft) {
+    return `
+      <form class="form-card" onsubmit="SkillNestApp.operatorStepNext(event)">
+        <div class="form-grid single-column">
+          ${C.field("Name", "operatorName", "Your name", "text", { value: draft.name || account.name || "" })}
+          ${C.choiceField("Background", "background", ["Student", "Admin assistant", "Designer", "Marketer", "Developer", "Business owner"], "Other background", draft.background || [])}
+          ${C.choiceField("Tools you use", "tools", ["ChatGPT", "Claude", "Canva", "Notion", "Zapier", "Google Sheets", "Cursor", "Midjourney"], "Other tools", draft.tools || [])}
+        </div>
+        <div class="wizard-actions">
+          <button class="btn secondary" type="button" onclick="SkillNestApp.operatorStepBack(event)">Back</button>
+          <button class="btn primary" type="submit">Continue</button>
+        </div>
+      </form>
+    `;
+  }
+
+  function operatorFocusStep(draft) {
+    return `
+      <form class="form-card" onsubmit="SkillNestApp.submitOperator(event)">
+        <div class="form-grid single-column">
+          ${C.choiceField("Industries you understand", "industries", ["Restaurants", "E-commerce", "Local Services", "Real Estate", "Education", "Health & wellness"], "Other industry", draft.industries || [])}
+          ${C.choiceField("Example Hatches you can complete", "exampleTasks", ["Social posts", "Product descriptions", "Simple websites", "Customer reply templates", "Menus/flyers", "Spreadsheet cleanup"], "Other Hatches", draft.exampleTasks || [])}
+        </div>
+        <div class="wizard-actions">
+          <button class="btn secondary" type="button" onclick="SkillNestApp.operatorStepBack(event)">Back</button>
+          <button class="btn primary" type="submit">Submit application</button>
+        </div>
+      </form>
+    `;
+  }
+
+  function operatorDoneStep() {
+    return `
+      <div class="form-card wizard-success">
+        <div class="wizard-success-mark" aria-hidden="true">&#10003;</div>
+        <h2>Application received.</h2>
+        <p>In a real version, Hatch would review your starting Hatch level. You can track your application from your profile.</p>
+        <div class="wizard-actions">
+          <button class="btn secondary" type="button" onclick="SkillNestApp.finishOperatorWizard('browse')">Browse Hatches</button>
+          <button class="btn primary" type="button" onclick="SkillNestApp.finishOperatorWizard('profile')">View profile</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function operatorPage(account, wizard = { step: "account", draft: {} }, loggedIn = false) {
+    const { step, draft } = wizard;
+    const stepCopy = {
+      account: "First, set up the account you’ll hatch under.",
+      about: "Tell us a little about yourself and the tools you already use.",
+      focus: "Pick the industries and Hatches you feel confident about.",
+      done: "Application submitted.",
+    };
+    const stepMarkup = step === "about"
+      ? operatorAboutStep(account, draft)
+      : step === "focus"
+        ? operatorFocusStep(draft)
+        : step === "done"
+          ? operatorDoneStep()
+          : operatorAccountStep(account, loggedIn);
     return `
       <main class="section page">
         <div class="form-layout">
           <div class="form-copy">
             <div class="section-label">Become a Hatcher</div>
             <h1>Apply to build practical Hatches.</h1>
-            <p>Start with simple work. Build ratings and category experience over time.</p>
+            <p>${stepCopy[step] || stepCopy.account}</p>
             <div class="operator-info">
               <h2>Growth path</h2>
               <p>L1 support Hatches -> L2 business Hatches -> L3 specialized Hatches -> L4 strategy later.</p>
@@ -238,18 +345,10 @@ window.SkillNestPages = (() => {
               <p>Clear communication, reliable delivery, useful tools, and familiarity with a few categories.</p>
             </div>
           </div>
-          <form class="form-card" onsubmit="SkillNestApp.submitOperator(event)">
-            <div class="form-grid">
-              ${C.field("Name", "operatorName", "Your name", "text", { value: account.name || "" })}
-              ${C.field("Email", "operatorEmail", "you@example.com", "email", { value: account.email || "" })}
-              ${C.choiceField("Background", "background", ["Student", "Admin assistant", "Designer", "Marketer", "Developer", "Business owner"], "Other background")}
-              ${C.choiceField("Tools you use", "tools", ["ChatGPT", "Claude", "Canva", "Notion", "Zapier", "Google Sheets", "Cursor", "Midjourney"], "Other tools")}
-              ${C.choiceField("Industries you understand", "industries", ["Restaurants", "E-commerce", "Local Services", "Real Estate", "Education", "Health & wellness"], "Other industry")}
-              ${C.choiceField("Example Hatches you can complete", "exampleTasks", ["Social posts", "Product descriptions", "Simple websites", "Customer reply templates", "Menus/flyers", "Spreadsheet cleanup"], "Other Hatches")}
-            </div>
-            <button class="btn primary full" type="submit">Apply</button>
-            <div class="success" id="operatorSuccess">Application received. In a real version, Hatch would review your starting Hatch level.</div>
-          </form>
+          <div class="wizard-column">
+            ${operatorStepper(step)}
+            ${stepMarkup}
+          </div>
         </div>
       </main>
     `;

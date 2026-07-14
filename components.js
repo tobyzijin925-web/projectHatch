@@ -91,13 +91,20 @@ window.SkillNestComponents = (() => {
     `;
   }
 
-  function choiceField(label, name, options, otherPlaceholder) {
+  function choiceField(label, name, options, otherPlaceholder, selected = []) {
+    const customChoices = selected.filter((value) => !options.includes(value));
     return `
       <fieldset class="choice-field">
         <legend>${label}</legend>
         <div class="choice-options">
-          ${options.map((option) => `
-            <button class="choice-pill" type="button" name="${name}" value="${escapeHtml(option)}" aria-pressed="false" onclick="SkillNestApp.toggleChoice(event, this)">${option}</button>
+          ${options.map((option) => {
+            const isSelected = selected.includes(option);
+            return `
+            <button class="choice-pill${isSelected ? " selected" : ""}" type="button" name="${name}" value="${escapeHtml(option)}" aria-pressed="${isSelected}" onclick="SkillNestApp.toggleChoice(event, this)">${option}</button>
+          `;
+          }).join("")}
+          ${customChoices.map((value) => `
+            <button class="choice-pill custom-choice selected" type="button" name="${name}" value="${escapeHtml(value)}" aria-pressed="true" onclick="SkillNestApp.toggleChoice(event, this)">${escapeHtml(value)} <span class="remove-choice" onclick="SkillNestApp.removeCustomChoice(event, this)">x</span></button>
           `).join("")}
         </div>
         <div class="choice-other-row">
