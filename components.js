@@ -1428,16 +1428,18 @@ window.SkillNestComponents = (() => {
         </div>
         <h3>${escapeHtml(task.title)}</h3>
         <p class="task-objective">${escapeHtml(objective)}</p>
-        <strong class="task-budget">${escapeHtml(task.budget)}</strong>
-        <div class="task-meta-row">
-          ${tag(category)}
-          ${tag(completion)}
-        </div>
-        ${interactive ? `
-          <div class="task-actions" onclick="event.stopPropagation()">
-            <button class="btn primary small view-action" type="button" onclick="SkillNestApp.openTaskDetail('${task.id}')">View details</button>
+        <div class="task-card-footer">
+          <strong class="task-budget">${escapeHtml(task.budget)}</strong>
+          <div class="task-meta-row">
+            ${tag(category)}
+            ${tag(completion)}
           </div>
-        ` : ""}
+          ${interactive ? `
+            <div class="task-actions" onclick="event.stopPropagation()">
+              <button class="btn primary small view-action" type="button" onclick="SkillNestApp.openTaskDetail('${task.id}')">View details</button>
+            </div>
+          ` : ""}
+        </div>
       </article>
     `;
   }
