@@ -21,6 +21,8 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
+const hatchApi = require("./hatchApi");
+
 const host = process.env.HOST || "127.0.0.1";
 const port = Number(process.env.PORT || 8132);
 const provider = (process.env.AI_PROVIDER || (process.env.DEEPSEEK_API_KEY ? "deepseek" : "openai")).toLowerCase();
@@ -630,7 +632,10 @@ function serveStatic(req, res) {
   const requested = url.pathname === "/" ? "/index.html" : url.pathname;
   const filePath = path.normalize(path.join(root, requested));
 
-  if (!filePath.startsWith(root)) {
+  const segments = path.relative(root, filePath).split(path.sep);
+  const isHidden = segments.some((segment) => segment.startsWith("."));
+  const isPrivate = segments[0] === "data" || filePath.endsWith(".db");
+  if (!filePath.startsWith(root) || isHidden || isPrivate) {
     res.writeHead(403);
     res.end("Forbidden");
     return;
@@ -682,6 +687,8 @@ const server = http.createServer((req, res) => {
     handleProjectAssistant(req, res);
     return;
   }
+
+  if (hatchApi.handle(req, res)) return;
 
   serveStatic(req, res);
 });

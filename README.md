@@ -8,7 +8,8 @@ Hatch is an AI-assisted marketplace prototype where clients describe work natura
 - Lightweight Node.js HTTP server in `server.js`
 - DeepSeek API called only from the server side
 - Browser storage for MVP demo state
-- No database, login backend, payments, or production upload storage yet
+- SQLite (Node's built-in `node:sqlite`, zero npm dependencies) for the hatch sync backend in `hatchApi.js` + `db.js`
+- No payments or production upload storage yet (a stub `payments` table and a state-transition hook are in place for later)
 
 ## Local Setup
 
@@ -42,6 +43,33 @@ http://127.0.0.1:8132/
 ```
 
 The frontend can be opened directly as a file for static preview, but the AI assistant needs the local server so the DeepSeek key stays on the backend.
+
+## Hatch Sync API
+
+`server.js` also serves a JSON API (backed by SQLite in `data/hatch.db`, created automatically) so hatches can be posted, seen, and claimed across users. Requires Node 22.5+ for `node:sqlite`.
+
+Auth endpoints return a bearer token; send it as `Authorization: Bearer <token>`:
+
+- `POST /api/auth/signup` — `{username, name, email, password, role?}`
+- `POST /api/auth/login` — `{usernameOrEmail, password}`
+- `GET /api/auth/me`, `POST /api/auth/logout`
+
+Hatch lifecycle (states: `open → claimed → in_progress → submitted → completed`, plus `disputed` / `cancelled`; responses carry both the machine `state` and the frontend `status` label such as "New Hatch"/"Incubating"/"Hatched"):
+
+- `POST /api/hatches` — create (client). Accepts the same field names the frontend uses (`title`, `objective`, `budget`, `deliverables`, ...).
+- `GET /api/hatches` — list; `?state=open` is the default, `?state=all` for everything, `?mine=created|claimed` with auth.
+- `GET /api/hatches/:id` — detail with the event timeline; participants also see submissions.
+- `POST /api/hatches/:id/claim` — Hatcher claims. Race-safe: exactly one simultaneous claimer wins.
+- `POST /api/hatches/:id/start` — claimed → in_progress (claimer only).
+- `POST /api/hatches/:id/submit` — `{message, attachments?}` deliverable (claimer only).
+- `POST /api/hatches/:id/review` — `{decision: "approve"|"reject", feedback?}` (creator only). Approve completes the hatch; reject sends it back to in_progress.
+- `POST /api/hatches/:id/cancel`, `POST /api/hatches/:id/dispute` — for the client / either party.
+
+Allowed state transitions are enforced in the database (a transitions table plus a trigger), and every change is recorded in `hatch_events`. Run the API tests with:
+
+```bash
+node --test test/api.test.js
+```
 
 ## API Key Safety
 

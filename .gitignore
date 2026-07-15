@@ -33,3 +33,9 @@ Thumbs.db
 *.swo
 *.tmp
 *.bak
+
+# Local database (hatch sync backend)
+data/
+*.db
+*.db-wal
+*.db-shm
