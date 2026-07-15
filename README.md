@@ -28,6 +28,19 @@ DEEPSEEK_API_KEY=your_real_key_here
 
 Never commit `.env`, `.env.local`, or any real API key.
 
+### Free-tier testing without DeepSeek credit
+
+DeepSeek requires prepaid balance to serve API requests. To test the real AI-assisted flow for free instead, use [Groq](https://console.groq.com/keys) (free API keys, OpenAI-compatible):
+
+```bash
+GROQ_API_KEY=your_groq_key_here
+AI_PROVIDER=groq
+```
+
+`AI_PROVIDER=groq` is required if a `DEEPSEEK_API_KEY` is also present in `.env.local`, since DeepSeek is preferred by default when both are set. Remove that line (or unset `AI_PROVIDER`) to switch back to DeepSeek later.
+
+Even without any key configured, the frontend keeps working: `aiController.js` automatically falls back to a local, rule-based brief generator whenever the AI request fails, so the hatch posting/browsing/claiming flow is fully testable with zero setup.
+
 ## Run Locally
 
 Use Node.js to start the local server:

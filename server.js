@@ -25,15 +25,22 @@ const hatchApi = require("./hatchApi");
 
 const host = process.env.HOST || "127.0.0.1";
 const port = Number(process.env.PORT || 8132);
-const provider = (process.env.AI_PROVIDER || (process.env.DEEPSEEK_API_KEY ? "deepseek" : "openai")).toLowerCase();
+const provider = (process.env.AI_PROVIDER
+  || (process.env.DEEPSEEK_API_KEY ? "deepseek" : process.env.GROQ_API_KEY ? "groq" : "openai")).toLowerCase();
 const model = process.env.AI_MODEL
   || process.env.DEEPSEEK_MODEL
+  || process.env.GROQ_MODEL
   || process.env.OPENAI_MODEL
-  || (provider === "deepseek" ? "deepseek-chat" : "gpt-4o-mini");
-const apiKey = provider === "deepseek"
-  ? process.env.DEEPSEEK_API_KEY || ""
-  : process.env.OPENAI_API_KEY || "";
-const apiBaseUrl = provider === "deepseek" ? "https://api.deepseek.com" : "https://api.openai.com/v1";
+  || { deepseek: "deepseek-chat", groq: "llama-3.3-70b-versatile" }[provider]
+  || "gpt-4o-mini";
+const apiKey = { deepseek: process.env.DEEPSEEK_API_KEY, groq: process.env.GROQ_API_KEY }[provider]
+  || process.env.OPENAI_API_KEY
+  || "";
+const apiBaseUrl = {
+  deepseek: "https://api.deepseek.com",
+  groq: "https://api.groq.com/openai/v1",
+}[provider] || "https://api.openai.com/v1";
+const keyEnvName = { deepseek: "DEEPSEEK_API_KEY", groq: "GROQ_API_KEY" }[provider] || "OPENAI_API_KEY";
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -523,9 +530,8 @@ Return:
 
 async function callOpenAI(payload, prompt = projectManagerPrompt()) {
   if (!apiKey) {
-    const keyName = provider === "deepseek" ? "DEEPSEEK_API_KEY" : "OPENAI_API_KEY";
-    console.warn(`[Hatch AI] ${keyName} is not configured.`);
-    return { ok: false, status: 503, error: `${keyName} is not configured.` };
+    console.warn(`[Hatch AI] ${keyEnvName} is not configured.`);
+    return { ok: false, status: 503, error: `${keyEnvName} is not configured.` };
   }
 
   const startedAt = Date.now();
@@ -581,7 +587,7 @@ async function callOpenAI(payload, prompt = projectManagerPrompt()) {
   debugIntake("user input", payload.inputText || payload.answer || "");
   debugIntake("raw response", outputText);
   const parsed = safeJsonParse(outputText);
-  parsed.source = parsed.source || provider;
+  parsed.source = provider;
   debugIntake("parsed response", {
     task_type: parsed.task_type,
     specific_task: parsed.specific_task,
@@ -697,5 +703,5 @@ server.listen(port, host, () => {
   console.log(`Hatch running at http://${host}:${port}/`);
   console.log(apiKey
     ? `AI intake enabled with ${provider}:${model}.`
-    : `AI intake fallback mode: set ${provider === "deepseek" ? "DEEPSEEK_API_KEY" : "OPENAI_API_KEY"} to enable real AI.`);
+    : `AI intake fallback mode: set ${keyEnvName} to enable real AI.`);
 });
