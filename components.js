@@ -1362,6 +1362,32 @@ window.SkillNestComponents = (() => {
     `;
   }
 
+  // Lowest dollar amount in a budget string ("$60 - $120" -> 60); non-numeric
+  // values ("Flexible") sort last.
+  function budgetSortValue(budget) {
+    const match = String(budget || "").replace(/,/g, "").match(/\d+(\.\d+)?/);
+    return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
+  }
+
+  // Estimated completion normalized to days ("2 days" -> 2, "1 week" -> 7);
+  // non-numeric values ("Flexible") sort last.
+  function completionSortValue(text) {
+    const str = String(text || "").toLowerCase();
+    const match = str.match(/\d+(\.\d+)?/);
+    if (!match) return Number.MAX_SAFE_INTEGER;
+    const num = Number(match[0]);
+    if (str.includes("hour")) return num / 24;
+    if (str.includes("week")) return num * 7;
+    if (str.includes("month")) return num * 30;
+    return num; // days (default unit)
+  }
+
+  // Numeric part of a level label ("L2" -> 2); unknown levels sort last.
+  function levelSortValue(level) {
+    const match = String(level || "").match(/\d+/);
+    return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
+  }
+
   function taskCard(task, interactive = false) {
     const status = statusInfo(task.status);
     const isOpen = status.label === "New Hatch";
@@ -1369,7 +1395,7 @@ window.SkillNestComponents = (() => {
     const completion = task.estimatedCompletion || task.timeline;
     const objective = task.objective || task.description;
     return `
-      <article class="task-card status-${status.className}" data-task-id="${task.id}" data-level="${task.level}" data-industry="${escapeHtml(task.industry)}" data-search="${escapeHtml(`${task.title} ${task.business} ${task.industry} ${category} ${task.status}`)}" onclick="SkillNestApp.openTaskDetail('${task.id}')">
+      <article class="task-card status-${status.className}" data-task-id="${task.id}" data-level="${task.level}" data-level-num="${levelSortValue(task.level)}" data-price="${budgetSortValue(task.budget)}" data-days="${completionSortValue(completion)}" data-industry="${escapeHtml(task.industry)}" data-search="${escapeHtml(`${task.title} ${task.business} ${task.industry} ${category} ${task.status}`)}" onclick="SkillNestApp.openTaskDetail('${task.id}')">
         <div class="card-top">
           <span class="level-ribbon">${task.level}</span>
           ${statusBadge(task.status)}

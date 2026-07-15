@@ -99,6 +99,15 @@ window.SkillNestPages = (() => {
                 ${industries.map((industry) => `<option value="${C.escapeHtml(industry)}">${industry}</option>`).join("")}
               </select>
             </label>
+            <label>
+              <span>Sort by</span>
+              <select id="sortFilter" onchange="SkillNestApp.applyTaskFilters()">
+                <option value="">Featured</option>
+                <option value="time">Time: shortest first</option>
+                <option value="price">Price: low to high</option>
+                <option value="level">Level: L1 → L3</option>
+              </select>
+            </label>
           </div>
           <div class="task-feedback" id="taskFeedback" role="status"></div>
           <div class="task-grid browse-grid" id="browseTaskGrid">

@@ -3099,9 +3099,24 @@ window.SkillNestApp = (() => {
     const query = (document.getElementById("taskSearch")?.value || "").toLowerCase();
     const level = document.getElementById("levelFilter")?.value || "";
     const industry = document.getElementById("industryFilter")?.value || "";
-    const cards = [...document.querySelectorAll("#browseTaskGrid .task-card")];
-    let visibleCount = 0;
+    const sort = document.getElementById("sortFilter")?.value || "";
+    const grid = document.getElementById("browseTaskGrid");
+    if (!grid) return;
+    const cards = [...grid.querySelectorAll(".task-card")];
 
+    // Capture the original ("Featured") order once so it can be restored later.
+    cards.forEach((card, index) => {
+      if (card.dataset.order === undefined) card.dataset.order = String(index);
+    });
+
+    const sortKey = { price: "price", time: "days", level: "levelNum" }[sort];
+    const sortValue = (card) => (sortKey ? Number(card.dataset[sortKey]) : Number(card.dataset.order));
+    const ordered = [...cards].sort(
+      (a, b) => sortValue(a) - sortValue(b) || Number(a.dataset.order) - Number(b.dataset.order)
+    );
+    ordered.forEach((card) => grid.appendChild(card));
+
+    let visibleCount = 0;
     cards.forEach((card) => {
       const isVisible =
         (!query || card.dataset.search.toLowerCase().includes(query)) &&
