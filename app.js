@@ -3095,11 +3095,36 @@ window.SkillNestApp = (() => {
     control.closest(".choice-pill")?.remove();
   }
 
+  // Values a range slider outputs when both thumbs are pulled to their extremes
+  // mean "no bound"; "Flexible" cards carry this sentinel and pass every range.
+  const RANGE_FLEX = String(Number.MAX_SAFE_INTEGER);
+
+  function readRangeSlider(id) {
+    const el = document.getElementById(id);
+    const minInput = el?.querySelector('[data-role="min"]');
+    const maxInput = el?.querySelector('[data-role="max"]');
+    if (!minInput || !maxInput) return null;
+    let min = Number(minInput.value);
+    let max = Number(maxInput.value);
+    if (min > max) [min, max] = [max, min];
+    const atFullRange = min <= Number(minInput.min) && max >= Number(maxInput.max);
+    return { min, max, atFullRange };
+  }
+
+  function inRange(valueStr, range) {
+    if (!range || range.atFullRange) return true;
+    if (valueStr === RANGE_FLEX) return true; // "Flexible" fits any range
+    const value = Number(valueStr);
+    return value >= range.min && value <= range.max;
+  }
+
   function applyTaskFilters() {
     const query = (document.getElementById("taskSearch")?.value || "").toLowerCase();
-    const level = document.getElementById("levelFilter")?.value || "";
+    const levels = [...document.querySelectorAll(".level-check:checked")].map((el) => el.value);
     const industry = document.getElementById("industryFilter")?.value || "";
     const sort = document.getElementById("sortFilter")?.value || "";
+    const price = readRangeSlider("priceRange");
+    const length = readRangeSlider("lengthRange");
     const grid = document.getElementById("browseTaskGrid");
     if (!grid) return;
     const cards = [...grid.querySelectorAll(".task-card")];
@@ -3120,13 +3145,61 @@ window.SkillNestApp = (() => {
     cards.forEach((card) => {
       const isVisible =
         (!query || card.dataset.search.toLowerCase().includes(query)) &&
-        (!level || card.dataset.level === level) &&
-        (!industry || card.dataset.industry === industry);
+        (!levels.length || levels.includes(card.dataset.level)) &&
+        (!industry || card.dataset.industry === industry) &&
+        inRange(card.dataset.price, price) &&
+        inRange(card.dataset.days, length);
       card.hidden = !isVisible;
       if (isVisible) visibleCount += 1;
     });
 
     document.getElementById("emptyTasks")?.classList.toggle("show", visibleCount === 0);
+    const hint = document.getElementById("taskResultHint");
+    if (hint) hint.textContent = `${visibleCount} ${visibleCount === 1 ? "Hatch" : "Hatches"}`;
+  }
+
+  // Keeps a dual-thumb slider consistent: stops the thumbs crossing, repaints
+  // the fill/labels, then re-runs the filters.
+  function handleRangeInput(id, role) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const minInput = el.querySelector('[data-role="min"]');
+    const maxInput = el.querySelector('[data-role="max"]');
+    const fill = el.querySelector('[data-role="fill"]');
+    const lowLabel = el.querySelector('[data-role="low"]');
+    const highLabel = el.querySelector('[data-role="high"]');
+    const bound = { min: Number(minInput.min), max: Number(minInput.max) };
+    let lo = Number(minInput.value);
+    let hi = Number(maxInput.value);
+    if (lo > hi) {
+      if (role === "min") { lo = hi; minInput.value = String(hi); }
+      else { hi = lo; maxInput.value = String(lo); }
+    }
+    const span = bound.max - bound.min || 1;
+    fill.style.left = `${((lo - bound.min) / span) * 100}%`;
+    fill.style.right = `${100 - ((hi - bound.min) / span) * 100}%`;
+    const format = el.dataset.format;
+    lowLabel.textContent = C.formatRangeValue(format, lo);
+    highLabel.textContent = C.formatRangeValue(format, hi);
+    applyTaskFilters();
+  }
+
+  function resetTaskFilters() {
+    const search = document.getElementById("taskSearch");
+    if (search) search.value = "";
+    const industry = document.getElementById("industryFilter");
+    if (industry) industry.value = "";
+    const sort = document.getElementById("sortFilter");
+    if (sort) sort.value = "";
+    document.querySelectorAll(".level-check:checked").forEach((el) => { el.checked = false; });
+    ["priceRange", "lengthRange"].forEach((id) => {
+      const el = document.getElementById(id);
+      const minInput = el?.querySelector('[data-role="min"]');
+      const maxInput = el?.querySelector('[data-role="max"]');
+      if (minInput) { minInput.value = minInput.min; handleRangeInput(id, "min"); }
+      if (maxInput) { maxInput.value = maxInput.max; handleRangeInput(id, "max"); }
+    });
+    applyTaskFilters();
   }
 
   function saveMission(taskId, status) {
@@ -3486,6 +3559,7 @@ window.SkillNestApp = (() => {
       syncMissionCardStates();
       renderFilePreviews();
       scrollAssistantToLatest();
+      if (route === "browse") applyTaskFilters();
     });
   }
 
@@ -3494,6 +3568,8 @@ window.SkillNestApp = (() => {
   return {
     applyDarkModePreference,
     applyTaskFilters,
+    handleRangeInput,
+    resetTaskFilters,
     answerClarification,
     clearTaskDraft,
     closeModal,

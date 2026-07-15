@@ -1388,6 +1388,32 @@ window.SkillNestComponents = (() => {
     return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
   }
 
+  // Human label for a range-slider value: "$444" for price, "3 days" for length.
+  function formatRangeValue(format, value) {
+    const n = Number(value);
+    if (format === "price") return `$${n}`;
+    if (format === "days") return `${n} ${n === 1 ? "day" : "days"}`;
+    return String(n);
+  }
+
+  // Dual-thumb range slider (two overlaid range inputs). `format` drives the
+  // value labels; the min/max thumbs stay within [min, max] and never cross.
+  function rangeFilterMarkup({ id, min, max, format }) {
+    return `
+      <div class="range-slider" id="${id}" data-format="${format}">
+        <div class="range-values">
+          <span data-role="low">${formatRangeValue(format, min)}</span>
+          <span data-role="high">${formatRangeValue(format, max)}</span>
+        </div>
+        <div class="range-inputs">
+          <div class="range-track"><div class="range-fill" data-role="fill" style="left:0%;right:0%"></div></div>
+          <input type="range" class="range-thumb range-thumb-min" data-role="min" min="${min}" max="${max}" value="${min}" oninput="SkillNestApp.handleRangeInput('${id}', 'min')" aria-label="Minimum" />
+          <input type="range" class="range-thumb range-thumb-max" data-role="max" min="${min}" max="${max}" value="${max}" oninput="SkillNestApp.handleRangeInput('${id}', 'max')" aria-label="Maximum" />
+        </div>
+      </div>
+    `;
+  }
+
   function taskCard(task, interactive = false) {
     const status = statusInfo(task.status);
     const isOpen = status.label === "New Hatch";
@@ -1827,6 +1853,10 @@ window.SkillNestComponents = (() => {
     statusBadge,
     statusInfo,
     tag,
+    budgetSortValue,
+    completionSortValue,
+    formatRangeValue,
+    rangeFilterMarkup,
     taskCard,
     taskDetail,
     taskReviewBriefMarkup,

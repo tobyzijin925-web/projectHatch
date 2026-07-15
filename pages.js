@@ -66,9 +66,20 @@ window.SkillNestPages = (() => {
   }
 
   function browsePage(allTasks = tasks) {
-    const uniqueLevels = [...new Set(allTasks.map((task) => task.level).filter(Boolean))];
+    const uniqueLevels = [...new Set(allTasks.map((task) => task.level).filter(Boolean))]
+      .sort((a, b) => C.completionSortValue(a) - C.completionSortValue(b) || String(a).localeCompare(String(b)));
     const industries = [...new Set(allTasks.map((task) => task.industry).filter(Boolean))];
     const browseNotice = localStorage.getItem("hatchBrowseNotice") || "";
+
+    // Range bounds from real (non-"Flexible") values so the sliders span the
+    // actual catalog. Guard against a degenerate single-value range.
+    const priceValues = allTasks.map((task) => C.budgetSortValue(task.budget)).filter((v) => v < Number.MAX_SAFE_INTEGER);
+    const dayValues = allTasks.map((task) => C.completionSortValue(task.estimatedCompletion || task.timeline)).filter((v) => v < Number.MAX_SAFE_INTEGER);
+    const priceMin = priceValues.length ? Math.floor(Math.min(...priceValues)) : 0;
+    const priceMax = Math.max(priceValues.length ? Math.ceil(Math.max(...priceValues)) : 0, priceMin + 1);
+    const dayMin = dayValues.length ? Math.floor(Math.min(...dayValues)) : 0;
+    const dayMax = Math.max(dayValues.length ? Math.ceil(Math.max(...dayValues)) : 0, dayMin + 1);
+
     return `
       <main>
         <section class="section page" id="tasks">
@@ -80,40 +91,60 @@ window.SkillNestPages = (() => {
               <p class="section-kicker">Find open, incubating, and recently hatched work.</p>
             </div>
           </div>
-          <div class="browse-tools" aria-label="Hatch filters">
-            <label class="browse-search">
-              <span>Search</span>
-              <input id="taskSearch" type="search" placeholder="Search by task, business, or industry..." oninput="SkillNestApp.applyTaskFilters()" />
-            </label>
-            <label>
-              <span>Level</span>
-              <select id="levelFilter" onchange="SkillNestApp.applyTaskFilters()">
-                <option value="">All levels</option>
-                ${uniqueLevels.map((level) => `<option value="${level}">${level}</option>`).join("")}
-              </select>
-            </label>
-            <label>
-              <span>Industry</span>
-              <select id="industryFilter" onchange="SkillNestApp.applyTaskFilters()">
-                <option value="">All industries</option>
-                ${industries.map((industry) => `<option value="${C.escapeHtml(industry)}">${industry}</option>`).join("")}
-              </select>
-            </label>
-            <label>
-              <span>Sort by</span>
-              <select id="sortFilter" onchange="SkillNestApp.applyTaskFilters()">
-                <option value="">Featured</option>
-                <option value="time">Time: shortest first</option>
-                <option value="price">Price: low to high</option>
-                <option value="level">Level: L1 → L3</option>
-              </select>
-            </label>
+          <div class="browse-layout">
+            <aside class="browse-sidebar" aria-label="Hatch filters">
+              <div class="filter-group">
+                <label class="filter-heading" for="taskSearch">Search</label>
+                <input id="taskSearch" type="search" placeholder="Task, business, or industry..." oninput="SkillNestApp.applyTaskFilters()" />
+              </div>
+              <div class="filter-group">
+                <div class="filter-heading">Level</div>
+                <div class="filter-options">
+                  ${uniqueLevels.map((level) => `
+                    <label class="filter-check">
+                      <input type="checkbox" class="level-check" value="${C.escapeHtml(level)}" onchange="SkillNestApp.applyTaskFilters()" />
+                      <span>${C.escapeHtml(level)}</span>
+                    </label>
+                  `).join("")}
+                </div>
+              </div>
+              <div class="filter-group">
+                <div class="filter-heading">Price</div>
+                ${C.rangeFilterMarkup({ id: "priceRange", min: priceMin, max: priceMax, format: "price" })}
+              </div>
+              <div class="filter-group">
+                <div class="filter-heading">Length</div>
+                ${C.rangeFilterMarkup({ id: "lengthRange", min: dayMin, max: dayMax, format: "days" })}
+              </div>
+              <div class="filter-group">
+                <label class="filter-heading" for="industryFilter">Industry</label>
+                <select id="industryFilter" onchange="SkillNestApp.applyTaskFilters()">
+                  <option value="">All industries</option>
+                  ${industries.map((industry) => `<option value="${C.escapeHtml(industry)}">${industry}</option>`).join("")}
+                </select>
+              </div>
+              <button class="btn ghost small filter-reset" type="button" onclick="SkillNestApp.resetTaskFilters()">Clear filters</button>
+            </aside>
+            <div class="browse-main">
+              <div class="browse-toolbar">
+                <span class="result-hint" id="taskResultHint"></span>
+                <label class="sort-control">
+                  <span>Sort by</span>
+                  <select id="sortFilter" onchange="SkillNestApp.applyTaskFilters()">
+                    <option value="">Featured</option>
+                    <option value="time">Time: shortest first</option>
+                    <option value="price">Price: low to high</option>
+                    <option value="level">Level: L1 → L3</option>
+                  </select>
+                </label>
+              </div>
+              <div class="task-feedback" id="taskFeedback" role="status"></div>
+              <div class="task-grid browse-grid" id="browseTaskGrid">
+                ${allTasks.map((task) => C.taskCard(task, true)).join("")}
+              </div>
+              <div class="empty-state" id="emptyTasks">No Hatches match those filters.</div>
+            </div>
           </div>
-          <div class="task-feedback" id="taskFeedback" role="status"></div>
-          <div class="task-grid browse-grid" id="browseTaskGrid">
-            ${allTasks.map((task) => C.taskCard(task, true)).join("")}
-          </div>
-          <div class="empty-state" id="emptyTasks">No Hatches match those filters.</div>
         </section>
       </main>
     `;
