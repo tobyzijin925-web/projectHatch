@@ -1217,6 +1217,11 @@ window.SkillNestComponents = (() => {
       ? `<button class="btn secondary nav-cta" type="button" onclick="SkillNestApp.setRoute('profile')">${escapeHtml(account.username || "My Hatches")}</button>`
       : `<button class="btn secondary nav-cta" type="button" onclick="SkillNestApp.setRoute('auth')">Sign up / Log in</button>`;
 
+    // Only offer "Become a Hatcher" to visitors who aren't already one: anyone
+    // signed out, or signed in with an account that isn't a Hatcher/Operator.
+    const isHatcher = /hatcher|operator/i.test(String(account.role || ""));
+    const showBecomeHatcher = !isLoggedIn || !isHatcher;
+
     return `
       <header class="topbar">
         <nav class="nav" aria-label="Primary navigation">
@@ -1226,7 +1231,7 @@ window.SkillNestComponents = (() => {
           <div class="nav-links">
             <a href="#browse" class="${active === "browse" ? "active" : ""}">Hatches</a>
             <a href="#verified-work" class="${active === "verified-work" ? "active" : ""}">Verified Results</a>
-            <a href="#operator" class="${active === "operator" ? "active" : ""}">Become a Hatcher</a>
+            ${showBecomeHatcher ? `<a href="#operator" class="${active === "operator" ? "active" : ""}">Become a Hatcher</a>` : ""}
             <a href="#trust" class="secondary-link ${active === "trust" ? "active" : ""}">Trust</a>
           </div>
           <div class="nav-actions">
@@ -1740,8 +1745,10 @@ window.SkillNestComponents = (() => {
     `);
   }
 
-  function footer(isLoggedIn) {
+  function footer(isLoggedIn, account = {}) {
     const profileLink = isLoggedIn ? `<a href="#profile">My Hatches</a>` : `<a href="#auth">Sign up / Log in</a>`;
+    const isHatcher = /hatcher|operator/i.test(String(account.role || ""));
+    const showBecomeHatcher = !isLoggedIn || !isHatcher;
     return `
       <footer class="footer">
         <div class="footer-inner">
@@ -1754,7 +1761,7 @@ window.SkillNestComponents = (() => {
             <a href="#post-task">Post a Hatch</a>
             <a href="#browse">Browse Hatches</a>
             <a href="#verified-work">Verified Results</a>
-            <a href="#operator">Become a Hatcher</a>
+            ${showBecomeHatcher ? `<a href="#operator">Become a Hatcher</a>` : ""}
             <a href="#trust">Trust</a>
             ${profileLink}
           </div>

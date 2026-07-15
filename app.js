@@ -3465,7 +3465,7 @@ window.SkillNestApp = (() => {
         ? (isLoggedIn() ? Pages.profilePage(account, getPostedTasks(), getMissions(), getOperatorApplications()) : Pages.authPage())
       : Pages.homePage(draftTask, files);
 
-    document.getElementById("app").innerHTML = `<div class="app-shell">${C.nav(route, isLoggedIn(), account)}${page}${C.footer(isLoggedIn())}</div>`;
+    document.getElementById("app").innerHTML = `<div class="app-shell">${C.nav(route, isLoggedIn(), account)}${page}${C.footer(isLoggedIn(), account)}</div>`;
     requestAnimationFrame(() => {
       document.querySelectorAll(".reveal").forEach((el) => el.classList.add("visible"));
       syncMissionCardStates();
