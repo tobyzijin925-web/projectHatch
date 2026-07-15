@@ -125,6 +125,21 @@ window.SkillNestApp = (() => {
     localStorage.setItem("hatchAssistantMessages", JSON.stringify(messages));
   }
 
+  // Splits one assistant reply into multiple chat bubbles by sentence, so a
+  // combined "acknowledgment + question" reply reads like separate texts
+  // instead of one dense paragraph.
+  function splitAssistantText(text = "") {
+    const trimmed = String(text || "").trim();
+    if (!trimmed) return [];
+    const sentences = trimmed.match(/[^.!?]+[.!?]+(\s+|$)|[^.!?]+$/g);
+    if (!sentences) return [trimmed];
+    return sentences.map((sentence) => sentence.trim()).filter(Boolean);
+  }
+
+  function assistantMessageEntries(text) {
+    return splitAssistantText(text).map((chunk) => ({ role: "assistant", text: chunk }));
+  }
+
   function debugFlow(label, data = {}) {
     try {
       console.debug(`[Hatch flow] ${label}`, JSON.parse(JSON.stringify(data)));
@@ -384,7 +399,7 @@ window.SkillNestApp = (() => {
 
     const processingBrief = processingProjectBrief(prompt.value, files);
     localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(processingBrief));
-    saveAssistantMessages([{ role: "assistant", text: "I’m reading through your project..." }]);
+    saveAssistantMessages(assistantMessageEntries("I’m reading through your project..."));
     setRoute("task-review");
 
     window.setTimeout(async () => {
@@ -395,7 +410,7 @@ window.SkillNestApp = (() => {
       });
       if (!brief.ok) {
         localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(invalidProjectBrief(prompt.value)));
-        saveAssistantMessages([{ role: "assistant", text: "Tell me what you need done, who it is for, and what a good result would look like." }]);
+        saveAssistantMessages(assistantMessageEntries("Tell me what you need done, who it is for, and what a good result would look like."));
         render();
         return;
       }
@@ -404,7 +419,7 @@ window.SkillNestApp = (() => {
       const assistantText = firstRunMessage(brief);
       const nextBrief = attachNextTurn(applyFinalReviewState(brief, assistantText));
       localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
-      saveAssistantMessages([{ role: "assistant", text: nextBrief.assistantMessage || assistantText }]);
+      saveAssistantMessages(assistantMessageEntries(nextBrief.assistantMessage || assistantText));
       render();
     }, 420);
   }
@@ -1884,7 +1899,7 @@ window.SkillNestApp = (() => {
     });
 
     if (!brief.isValidProject || brief.stage === "invalid_input" || Number(brief.confidence || 0) < 40) {
-      const pendingMessages = [...existingMessages, { role: "user", text: answer }, { role: "assistant", text: "I’ll take a closer look and shape this into a Hatch." }];
+      const pendingMessages = [...existingMessages, { role: "user", text: answer }, ...assistantMessageEntries("I’ll take a closer look and shape this into a Hatch.")];
       saveAssistantMessages(pendingMessages);
       render();
 
@@ -1900,12 +1915,12 @@ window.SkillNestApp = (() => {
       const assistantText = turnBrief.assistantMessage || C.fallbackAssistantMessage(turnBrief);
       mergeInferredProgress(turnBrief);
       localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(turnBrief));
-      saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: assistantText }]);
+      saveAssistantMessages([...existingMessages, { role: "user", text: answer }, ...assistantMessageEntries(assistantText)]);
       render();
       return;
     }
 
-    const pendingMessages = [...existingMessages, { role: "user", text: answer }, { role: "assistant", text: "That helps. I’m updating the brief..." }];
+    const pendingMessages = [...existingMessages, { role: "user", text: answer }, ...assistantMessageEntries("That helps. I’m updating the brief...")];
     localStorage.setItem("skillnestGeneratedBrief", JSON.stringify({
       ...brief,
       nextQuestion: { key: "loading", prompt: "", suggestions: [], placeholder: "" },
@@ -2050,7 +2065,7 @@ window.SkillNestApp = (() => {
       activeTurn: nextBrief.currentTurn || null,
     });
     localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
-    saveAssistantMessages([...existingMessages, { role: "user", text: answer }, { role: "assistant", text: nextBrief.assistantMessage || assistantText }]);
+    saveAssistantMessages([...existingMessages, { role: "user", text: answer }, ...assistantMessageEntries(nextBrief.assistantMessage || assistantText)]);
     if (nextBrief.stage === "ready_to_post") {
       render();
       return;
@@ -2339,7 +2354,7 @@ window.SkillNestApp = (() => {
       setActiveSectionIndex(briefSectionIds().length);
       localStorage.removeItem("hatchReturnToFinalReview");
     }
-    saveAssistantMessages([...getAssistantMessages(), { role: "assistant", text: nextBrief.assistantMessage }]);
+    saveAssistantMessages([...getAssistantMessages(), ...assistantMessageEntries(nextBrief.assistantMessage)]);
     render();
   }
 
@@ -2380,7 +2395,7 @@ window.SkillNestApp = (() => {
     nextBrief.missingInfo = (nextBrief.missingInfo || []).filter((item) => item !== sectionId);
     localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
     saveSectionMessage(sectionId, "Here’s a tighter version.");
-    saveAssistantMessages([...getAssistantMessages(), { role: "assistant", text: "Here’s a tighter version." }]);
+    saveAssistantMessages([...getAssistantMessages(), ...assistantMessageEntries("Here’s a tighter version.")]);
     render();
   }
 
@@ -2491,7 +2506,7 @@ window.SkillNestApp = (() => {
         nextBrief.stage = "ready_to_post";
         nextBrief.readiness = "Ready to Post";
       }
-      saveAssistantMessages([...getAssistantMessages(), { role: "assistant", text: nextBrief.assistantMessage }]);
+      saveAssistantMessages([...getAssistantMessages(), ...assistantMessageEntries(nextBrief.assistantMessage)]);
     }
 
     localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
@@ -2890,7 +2905,7 @@ window.SkillNestApp = (() => {
         if (qualityIssues.includes("timeline")) return id === "suggestedTimeline";
         return false;
       }))));
-      saveAssistantMessages([...getAssistantMessages(), { role: "assistant", text: message }]);
+      saveAssistantMessages([...getAssistantMessages(), ...assistantMessageEntries(message)]);
       localStorage.setItem("skillnestGeneratedBrief", JSON.stringify({
         ...brief,
         missingInfo: [...new Set([...(brief.missingInfo || []), ...qualityIssues])],
@@ -2921,7 +2936,7 @@ window.SkillNestApp = (() => {
 
   function saveHatchDraft() {
     localStorage.setItem("hatchDraftSavedAt", new Date().toISOString());
-    saveAssistantMessages([...getAssistantMessages(), { role: "assistant", text: "Draft saved. You can come back and finish it later." }]);
+    saveAssistantMessages([...getAssistantMessages(), ...assistantMessageEntries("Draft saved. You can come back and finish it later.")]);
     render();
   }
 
@@ -2945,7 +2960,7 @@ window.SkillNestApp = (() => {
       assistantMessage: "No problem. Tell me what you’d like to change, and I’ll update the brief.",
     };
     localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
-    saveAssistantMessages([...getAssistantMessages(), { role: "assistant", text: nextBrief.assistantMessage }]);
+    saveAssistantMessages([...getAssistantMessages(), ...assistantMessageEntries(nextBrief.assistantMessage)]);
     render();
   }
 
