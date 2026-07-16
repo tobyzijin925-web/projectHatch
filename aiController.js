@@ -284,7 +284,15 @@ window.HatchAIController = (() => {
   async function refreshStatus() {
     try {
       const status = await fetch(apiUrl("/api/ai-status")).then((response) => response.json());
-      if (status?.ok && status.keyConfigured) markConnected();
+      if (status?.ok && status.keyConfigured) {
+        const previousMode = localStorage.getItem(STORAGE_MODE);
+        const previousError = localStorage.getItem(STORAGE_ERROR);
+        markConnected();
+        // The page renders before this ping resolves, so clearing a stale error
+        // is invisible until something repaints. Only repaint when the banner
+        // would actually change, to avoid clobbering in-progress typing.
+        if (previousMode !== "connected" || previousError) window.SkillNestApp?.render?.();
+      }
       return status;
     } catch {
       return null;

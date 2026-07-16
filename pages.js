@@ -36,7 +36,9 @@ window.SkillNestPages = (() => {
       ? "AI intake connected"
       : intakeMode === "local-validation"
         ? "Still shaping the idea"
-        : "Local intake fallback";
+        : intakeMode === "local-fallback"
+          ? "Local intake fallback"
+          : "Checking AI connection...";
     const aiError = localStorage.getItem("hatchAiLastError") || "";
     return `
       <main class="section page">
