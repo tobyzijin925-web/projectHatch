@@ -14,6 +14,11 @@
   --accent: #18b77a;
   --accent-dark: #0d8e5b;
   --accent-soft: #e8f8f0;
+  /* Secondary button: light green that lightens on hover (Notion-style pair
+     with the primary green, which darkens on hover). */
+  --btn-secondary-bg: #d3f0e4;
+  --btn-secondary-bg-hover: #eafaf3;
+  --btn-secondary-text: #0d8e5b;
   --danger: #b42318;
   --danger-soft: #fff5f5;
   --info: #3538cd;
@@ -50,6 +55,9 @@ html.dark-mode {
   --line: #2c303a;
   --navy: #0b0d12;
   --accent-soft: #16332a;
+  --btn-secondary-bg: #1c4133;
+  --btn-secondary-bg-hover: #275140;
+  --btn-secondary-text: #4fd6a0;
   --danger: #ff6b6b;
   --danger-soft: #3a1f1f;
   --info: #8b93f7;
@@ -224,8 +232,13 @@ a {
 }
 
 .btn.secondary {
-  border-color: var(--line);
-  background: rgba(var(--paper-rgb), 0.72);
+  border-color: transparent;
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+}
+
+.btn.secondary:hover {
+  background: var(--btn-secondary-bg-hover);
 }
 
 .btn.large {

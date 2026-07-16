@@ -3680,15 +3680,23 @@ window.SkillNestApp = (() => {
       const remote = data.applications.find((item) => item.id === application.backendId)
         || data.applications[0];
       const label = statusLabel[remote.status] || application.status;
-      // Prefer whatever the applicant attached locally, but fall back to the
-      // server copy so an update made elsewhere still shows here.
+      // Normalize every value we might store (the backend sends null for an
+      // unset review note; we keep "") and prefer whatever the applicant
+      // attached locally, falling back to the server copy.
+      const reviewNote = remote.reviewNote || "";
       const linkedin = application.linkedin || remote.linkedin || "";
       const resumeName = application.resumeName || remote.resumeName || "";
       const resumeData = application.resumeData || remote.resumeData || "";
-      if (application.status !== label || application.reviewNote !== remote.reviewNote
-        || application.linkedin !== linkedin || application.resumeName !== resumeName) {
+      // Compare against the SAME normalized values we would store, so a
+      // null-vs-"" difference can't flip `changed` on every pass and spin
+      // render() -> refresh -> render() forever.
+      if ((application.backendId ?? null) !== (remote.id ?? null)
+        || application.status !== label
+        || (application.reviewNote || "") !== reviewNote
+        || (application.linkedin || "") !== linkedin
+        || (application.resumeName || "") !== resumeName) {
         changed = true;
-        return { ...application, backendId: remote.id, status: label, reviewNote: remote.reviewNote || "", linkedin, resumeName, resumeData };
+        return { ...application, backendId: remote.id, status: label, reviewNote, linkedin, resumeName, resumeData };
       }
       return application;
     });
