@@ -817,16 +817,43 @@ window.SkillNestApp = (() => {
       .trim();
   }
 
+  // Question scaffolding carries no meaning: "What is the name of your bakery?" and
+  // "What is the style of your bakery?" share every word except the one that matters.
+  // Comparing raw words rates those as the same question, so strip the scaffolding
+  // and compare only the words that distinguish one question from another.
+  const QUESTION_STOPWORDS = new Set([
+    "what", "whats", "when", "where", "which", "who", "why", "how",
+    "are", "was", "were", "you", "youre", "your", "yours", "the", "and", "but", "for",
+    "can", "could", "would", "should", "will", "shall", "may", "might", "does", "did",
+    "have", "has", "had", "tell", "share", "give", "got", "now", "thanks", "thank",
+    "please", "this", "that", "these", "those", "any", "some", "let", "know", "about",
+    "like", "with", "from", "into", "more", "much", "there", "here", "sure", "great",
+    "perfect", "awesome", "okay", "yeah", "yes", "help", "need", "needs", "want",
+    "wants", "looking", "look", "just", "also", "then", "than", "them", "they", "their",
+  ]);
+
+  function contentWords(text = "") {
+    return new Set(
+      normalizedQuestionText(text)
+        .split(" ")
+        .filter((word) => word.length > 2 && !QUESTION_STOPWORDS.has(word)),
+    );
+  }
+
+  function contentOverlap(previousText = "", nextText = "") {
+    const previousWords = contentWords(previousText);
+    const nextWords = contentWords(nextText);
+    if (!previousWords.size || !nextWords.size) return 0;
+    const matches = [...nextWords].filter((word) => previousWords.has(word)).length;
+    return matches / Math.max(previousWords.size, nextWords.size);
+  }
+
   function isSameQuestion(previousQuestion = "", nextQuestion = "") {
     const previous = normalizedQuestionText(previousQuestion);
     const next = normalizedQuestionText(nextQuestion);
     if (!previous || !next) return false;
     if (previous === next) return true;
-    const previousWords = new Set(previous.split(" ").filter((word) => word.length > 2));
-    const nextWords = next.split(" ").filter((word) => word.length > 2);
-    if (!previousWords.size || !nextWords.length) return false;
-    const overlap = nextWords.filter((word) => previousWords.has(word)).length / Math.max(nextWords.length, previousWords.size);
-    return overlap >= 0.72;
+    return contentOverlap(previousQuestion, nextQuestion) >= 0.72;
   }
 
   function isDuplicateAssistantMessage(previousMessage = "", nextMessage = "") {
@@ -834,11 +861,7 @@ window.SkillNestApp = (() => {
     const next = normalizedQuestionText(nextMessage);
     if (!previous || !next) return false;
     if (previous === next) return true;
-    const previousWords = new Set(previous.split(" ").filter((word) => word.length > 2));
-    const nextWords = next.split(" ").filter((word) => word.length > 2);
-    if (!previousWords.size || !nextWords.length) return false;
-    const overlap = nextWords.filter((word) => previousWords.has(word)).length / Math.max(previousWords.size, nextWords.length);
-    return overlap >= 0.78;
+    return contentOverlap(previousMessage, nextMessage) >= 0.78;
   }
 
   function answeredTurnIds() {

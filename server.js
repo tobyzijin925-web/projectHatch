@@ -42,6 +42,45 @@ const apiBaseUrl = {
 }[provider] || "https://api.openai.com/v1";
 const keyEnvName = { deepseek: "DEEPSEEK_API_KEY", groq: "GROQ_API_KEY" }[provider] || "OPENAI_API_KEY";
 
+// A non-empty key string is not the same as a working key. Probe the provider's
+// /models endpoint (OpenAI-compatible across deepseek/groq/openai) so the UI can
+// tell "configured" from "actually accepted". Cached because the probe is ~2s and
+// /api/ai-status is pinged on every page load.
+const KEY_CHECK_TTL_MS = 60 * 1000;
+let keyCheckCache = null; // { valid: boolean|null, status, error, checkedAt }
+
+async function validateApiKey({ force = false } = {}) {
+  if (!apiKey) return { valid: false, status: 0, error: `${keyEnvName} is not configured.` };
+  if (!force && keyCheckCache && Date.now() - keyCheckCache.checkedAt < KEY_CHECK_TTL_MS) {
+    return keyCheckCache;
+  }
+  let result;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const response = await fetch(`${apiBaseUrl}/models`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
+
+    if (response.ok) {
+      result = { valid: true, status: response.status, error: "" };
+    } else if (response.status === 401 || response.status === 403) {
+      const body = await response.json().catch(() => ({}));
+      result = { valid: false, status: response.status, error: body.error?.message || `${keyEnvName} was rejected by ${provider}.` };
+    } else {
+      // 5xx / rate limit / unexpected: the key may be fine, provider is unhappy.
+      // Report unknown rather than falsely condemning the key.
+      result = { valid: null, status: response.status, error: `${provider} returned ${response.status} while checking the key.` };
+    }
+  } catch (error) {
+    // Network failure / timeout: unknown, not invalid.
+    result = { valid: null, status: 0, error: error.name === "AbortError" ? `${provider} key check timed out.` : (error.message || "Key check failed.") };
+  }
+  keyCheckCache = { ...result, checkedAt: Date.now() };
+  return keyCheckCache;
+}
+
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -673,13 +712,18 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.method === "GET" && req.url === "/api/ai-status") {
-    sendJson(res, 200, {
-      ok: true,
-      provider,
-      model,
-      keyConfigured: Boolean(apiKey),
-      apiBaseUrl,
+  if (req.method === "GET" && req.url.startsWith("/api/ai-status")) {
+    const force = /[?&]force=1\b/.test(req.url);
+    validateApiKey({ force }).then((keyCheck) => {
+      sendJson(res, 200, {
+        ok: true,
+        provider,
+        model,
+        keyConfigured: Boolean(apiKey),
+        keyValid: keyCheck.valid,
+        keyError: keyCheck.valid === false ? keyCheck.error : "",
+        apiBaseUrl,
+      });
     });
     return;
   }

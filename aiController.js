@@ -284,9 +284,20 @@ window.HatchAIController = (() => {
   async function refreshStatus() {
     try {
       const status = await fetch(apiUrl("/api/ai-status")).then((response) => response.json());
-      if (status?.ok && status.keyConfigured) {
-        const previousMode = localStorage.getItem(STORAGE_MODE);
-        const previousError = localStorage.getItem(STORAGE_ERROR);
+      const previousMode = localStorage.getItem(STORAGE_MODE);
+      const previousError = localStorage.getItem(STORAGE_ERROR);
+
+      // keyValid: true = provider accepted the key, false = rejected (401/403),
+      // null/undefined = unknown (network/5xx, or an older server that doesn't probe).
+      // Only a hard rejection should show an error; unknown must not cry wolf.
+      if (status?.ok && status.keyValid === false) {
+        const message = status.keyError || `${status.provider || "AI"} rejected the API key.`;
+        localStorage.setItem(STORAGE_ERROR, message);
+        localStorage.setItem(STORAGE_MODE, "local-fallback");
+        writeState({ fallbackUsed: true, lastError: message, lastAssistantSource: "local-fallback" });
+        if (previousMode !== "local-fallback" || previousError !== message) window.SkillNestApp?.render?.();
+      } else if (status?.ok && status.keyConfigured && status.keyValid !== false) {
+        // Valid, or unknown-but-configured (don't downgrade a working legacy server).
         markConnected();
         // The page renders before this ping resolves, so clearing a stale error
         // is invisible until something repaints. Only repaint when the banner
