@@ -2721,6 +2721,14 @@ window.SkillNestApp = (() => {
     document.getElementById("reviewTaskFile")?.click();
   }
 
+  // Same idea as attachReferenceMaterial, but for the "+" menu next to the
+  // reply box — available any time the conversation compose bar is showing,
+  // not just on the dedicated references step.
+  function attachComposeFile(materialType = "Other material") {
+    localStorage.setItem("hatchPendingFileMaterial", materialType);
+    document.getElementById("composeAttachFile")?.click();
+  }
+
   function updateDraftFileLabel(index, materialType) {
     const files = readJson("skillnestDraftFiles", []);
     if (!files[index]) return;
@@ -4128,6 +4136,7 @@ window.SkillNestApp = (() => {
     continueChattingFromFinal,
     addCustomChoice,
     attachReferenceMaterial,
+    attachComposeFile,
     cancelBriefEdit,
     deletePostedTask,
     editBriefField,

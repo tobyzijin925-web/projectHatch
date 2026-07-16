@@ -2158,7 +2158,8 @@ dd {
 
 .assistant-compose {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
   gap: 10px;
 }
 
@@ -2168,6 +2169,143 @@ dd {
   border: 1px solid var(--line);
   border-radius: 18px;
   background: var(--surface);
+}
+
+/* "+" attach trigger + its upward-opening menu. Uses <details>/<summary> so
+   the open/close state needs no JS, and the panel is positioned above the
+   trigger since the compose bar sits at the bottom of the assistant panel. */
+.attach-menu {
+  position: relative;
+}
+
+.attach-menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--accent-dark);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.attach-menu-trigger::-webkit-details-marker,
+.attach-menu-trigger::marker {
+  display: none;
+  content: "";
+}
+
+.attach-menu-trigger:hover {
+  background: var(--btn-secondary-bg);
+  border-color: transparent;
+}
+
+.attach-menu[open] .attach-menu-trigger {
+  background: var(--btn-secondary-bg);
+  border-color: transparent;
+  transform: rotate(45deg);
+}
+
+.attach-menu-panel {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 20;
+  display: grid;
+  gap: 4px;
+  width: max(230px, 100%);
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  animation: attachMenuIn 140ms ease both;
+}
+
+.attach-menu-title {
+  margin: 2px 6px 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.attach-menu-panel button {
+  padding: 10px 12px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.attach-menu-panel button:hover {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+@keyframes attachMenuIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.compose-file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.compose-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+  max-width: 100%;
+}
+
+.compose-file-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-text);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.compose-file-chip button:hover {
+  background: var(--btn-secondary-bg-hover);
 }
 
 .conversation-focus-card {
@@ -4258,7 +4396,16 @@ html.dark-mode .btn.secondary:hover {
   }
 
   .assistant-compose {
-    grid-template-columns: 1fr;
+    grid-template-columns: auto 1fr;
+  }
+
+  .assistant-compose .btn {
+    grid-column: 1 / -1;
+  }
+
+  .attach-menu-panel {
+    left: 0;
+    width: max(220px, 60vw);
   }
 
   .profile-actions {

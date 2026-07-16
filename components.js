@@ -1177,19 +1177,63 @@ window.SkillNestComponents = (() => {
         </div>
         ${ready ? finalReviewMarkup(brief, files, completed) : ""}
         ${showFileTools ? referenceAttachmentMarkup(files, contextualSuggestions) : ""}
+        ${!thinking && !ready && !showFileTools ? composeFileChipsMarkup(files) : ""}
         ${contextualSuggestions.length && !showFileTools ? `<div class="assistant-suggestions" aria-label="Suggested replies">
           <small>Reply naturally, or choose one below.</small>
           ${contextualSuggestions.map((item) => `<button class="choice-chip" type="button" onclick="SkillNestApp.sendAssistantReply(decodeURIComponent('${encodeURIComponent(item)}'))">${escapeHtml(item)}</button>`).join("")}
         </div>` : ""}
         ${thinking || ready ? "" : `
           <div class="assistant-compose">
+            ${attachMenuMarkup()}
             <input id="assistantReply" type="text" placeholder="${escapeHtml(placeholder)}" onkeydown="SkillNestApp.handleAssistantReplyKey(event)" />
             <button class="btn primary small" type="button" onclick="SkillNestApp.sendAssistantReply()">Send</button>
           </div>
+          <input id="composeAttachFile" class="hidden-file" type="file" multiple onchange="SkillNestApp.handleTaskFiles(event)" />
           <p class="assistant-input-hint">Type freely — Hatch will organize it.</p>
           <p class="inline-error" id="assistantInputError">Type a message before sending.</p>
         `}
       </section>
+    `;
+  }
+
+  // Small "+" trigger next to the reply box. Opens upward (native <details>,
+  // no JS needed to toggle) with generic upload categories so a Hatcher can
+  // attach a file at any point in the conversation, not only when Hatch is
+  // specifically asking for reference material.
+  function attachMenuMarkup() {
+    const options = [
+      ["Reference image or photo", "Reference image"],
+      ["Logo or brand assets", "Logo/brand assets"],
+      ["Document (PDF, Word, etc.)", "Document"],
+      ["Other file", "Other material"],
+    ];
+    return `
+      <details class="attach-menu">
+        <summary class="attach-menu-trigger" aria-label="Attach a file" title="Attach a file">+</summary>
+        <div class="attach-menu-panel" role="menu">
+          <p class="attach-menu-title">Add a file</p>
+          ${options.map(([label, materialType]) => `
+            <button type="button" role="menuitem" onclick="this.closest('details').removeAttribute('open'); SkillNestApp.attachComposeFile('${escapeHtml(materialType)}')">${escapeHtml(label)}</button>
+          `).join("")}
+        </div>
+      </details>
+    `;
+  }
+
+  // Compact chip row so files attached via the "+" menu are visible without
+  // pulling in the heavier reference-attachment panel (which already shows
+  // its own file list when the references step is active).
+  function composeFileChipsMarkup(files = []) {
+    if (!files.length) return "";
+    return `
+      <div class="compose-file-chips" aria-label="Attached files">
+        ${files.map((file, index) => `
+          <span class="compose-file-chip">
+            ${escapeHtml(file.name || file)}
+            <button type="button" aria-label="Remove ${escapeHtml(file.name || "file")}" onclick="SkillNestApp.removeDraftFile(${index})">&times;</button>
+          </span>
+        `).join("")}
+      </div>
     `;
   }
 
