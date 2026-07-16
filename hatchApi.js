@@ -9,6 +9,21 @@ const { db, transact } = require("./db");
 
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+// Accounts whose email is listed here get admin powers: deleting hatches,
+// reviewing hatcher applications, and messaging any inbox. Emails are not
+// verified, so admin belongs to whoever registers the address first — fine
+// for local use, revisit before hosting this anywhere public.
+const ADMIN_EMAILS = new Set(
+  (process.env.HATCH_ADMIN_EMAILS || "derekzhuang12345@gmail.com")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+function isAdminUser(user) {
+  return Boolean(user && ADMIN_EMAILS.has(String(user.email || "").toLowerCase()));
+}
+
 // Canonical machine states live in the database; the frontend renders the
 // labels below (see statusInfo in components.js), so responses carry both.
 const STATE_LABELS = {
@@ -29,7 +44,7 @@ function sendJson(res, status, data) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
   });
   res.end(JSON.stringify(data));
@@ -128,6 +143,16 @@ function requireUser(req, res) {
   return user;
 }
 
+function requireAdmin(req, res) {
+  const user = requireUser(req, res);
+  if (!user) return null;
+  if (!isAdminUser(user)) {
+    fail(res, 403, "This action needs an admin account.");
+    return null;
+  }
+  return user;
+}
+
 function accountPayload(user) {
   return {
     id: user.id,
@@ -137,6 +162,7 @@ function accountPayload(user) {
     role: user.role,
     provider: "Email",
     joinedAt: user.joined_at,
+    isAdmin: isAdminUser(user),
   };
 }
 
@@ -185,6 +211,49 @@ function toClientHatch(row) {
     updatedAt: row.updated_at,
     claimedAt: row.claimed_at,
     completedAt: row.completed_at,
+  };
+}
+
+// ── Inbox ──────────────────────────────────────────────────────────────────
+
+// Drops a message into a user's inbox. sender null = system notification.
+function notify(recipientId, { senderId = null, kind = "system", subject = "", body = "", hatchId = null } = {}) {
+  if (!recipientId) return;
+  db.prepare(`
+    INSERT INTO messages (recipient_id, sender_id, kind, subject, body, hatch_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(recipientId, senderId, kind, subject, body, hatchId, nowIso());
+}
+
+function toClientMessage(row) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    subject: row.subject,
+    body: row.body,
+    hatchId: row.hatch_id,
+    from: row.sender_username ? { username: row.sender_username, name: row.sender_name } : null,
+    read: Boolean(row.read_at),
+    readAt: row.read_at,
+    createdAt: row.created_at,
+  };
+}
+
+function toClientApplication(row) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    username: row.username,
+    name: row.name,
+    email: row.email,
+    background: row.background,
+    tools: row.tools,
+    industries: row.industries,
+    exampleTasks: row.example_tasks,
+    status: row.status,
+    reviewNote: row.review_note,
+    submittedAt: row.created_at,
+    reviewedAt: row.reviewed_at,
   };
 }
 
@@ -434,6 +503,13 @@ function handleClaim(req, res, id) {
   });
 
   if (result.errorStatus) return fail(res, result.errorStatus, result.error);
+  notify(result.hatch.createdBy.id, {
+    senderId: user.id,
+    kind: "hatcher",
+    subject: `${user.username} claimed your Hatch "${result.hatch.title}"`,
+    body: "Your Hatch is now incubating. You'll get another update when work is submitted for review.",
+    hatchId: id,
+  });
   sendJson(res, 200, { ok: true, hatch: result.hatch });
 }
 
@@ -477,6 +553,13 @@ async function handleSubmit(req, res, id) {
     VALUES (?, ?, ?, ?, ?)
   `).run(id, user.id, message, JSON.stringify(attachments), nowIso());
 
+  notify(result.hatch.createdBy.id, {
+    senderId: user.id,
+    kind: "hatcher",
+    subject: `Work submitted on "${result.hatch.title}"`,
+    body: `${user.username} submitted a deliverable for your review: ${message}`,
+    hatchId: id,
+  });
   sendJson(res, 200, { ok: true, hatch: result.hatch });
 }
 
@@ -509,6 +592,19 @@ async function handleReview(req, res, id) {
     WHERE id = (SELECT MAX(id) FROM submissions WHERE hatch_id = ? AND status = 'pending')
   `).run(approving ? "approved" : "rejected", feedback, nowIso(), id);
 
+  if (result.hatch.claimedBy) {
+    notify(result.hatch.claimedBy.id, {
+      senderId: user.id,
+      kind: "client",
+      subject: approving
+        ? `Your work on "${result.hatch.title}" was approved`
+        : `Changes requested on "${result.hatch.title}"`,
+      body: approving
+        ? "The client approved your submission. This Hatch is now complete — nice work!"
+        : `The client asked for changes${feedback ? `: ${feedback}` : "."}`,
+      hatchId: id,
+    });
+  }
   sendJson(res, 200, { ok: true, hatch: result.hatch });
 }
 
@@ -525,6 +621,15 @@ function handleCancel(req, res, id) {
     note: "Cancelled by client",
   });
   if (result.errorStatus) return failTransition(res, result, id, user, "created_by", "Only the client who posted this Hatch can cancel it.");
+  if (result.hatch.claimedBy) {
+    notify(result.hatch.claimedBy.id, {
+      senderId: user.id,
+      kind: "client",
+      subject: `The Hatch "${result.hatch.title}" was cancelled`,
+      body: "The client cancelled this Hatch, so no further work is needed.",
+      hatchId: id,
+    });
+  }
   sendJson(res, 200, { ok: true, hatch: result.hatch });
 }
 
@@ -544,6 +649,16 @@ async function handleDispute(req, res, id) {
     note,
   });
   if (result.errorStatus) return failTransition(res, result, id, user, "either", "Only the client or the Hatcher on this Hatch can open a dispute.");
+  const counterpart = result.hatch.createdBy.id === user.id ? result.hatch.claimedBy : result.hatch.createdBy;
+  if (counterpart) {
+    notify(counterpart.id, {
+      senderId: user.id,
+      kind: result.hatch.createdBy.id === user.id ? "client" : "hatcher",
+      subject: `A dispute was opened on "${result.hatch.title}"`,
+      body: note,
+      hatchId: id,
+    });
+  }
   sendJson(res, 200, { ok: true, hatch: result.hatch });
 }
 
@@ -560,6 +675,199 @@ function failTransition(res, result, id, user, party, forbiddenMessage) {
     }
   }
   return fail(res, result.errorStatus, result.error);
+}
+
+// ── Inbox handlers ─────────────────────────────────────────────────────────
+
+function handleInbox(req, res) {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const rows = db.prepare(`
+    SELECT m.*, su.username AS sender_username, su.name AS sender_name
+    FROM messages m LEFT JOIN users su ON su.id = m.sender_id
+    WHERE m.recipient_id = ? ORDER BY m.id DESC LIMIT 200
+  `).all(user.id);
+  const unread = rows.filter((row) => !row.read_at).length;
+  sendJson(res, 200, { ok: true, messages: rows.map(toClientMessage), unreadCount: unread });
+}
+
+function handleMarkRead(req, res, id) {
+  const user = requireUser(req, res);
+  if (!user) return;
+  db.prepare("UPDATE messages SET read_at = ? WHERE id = ? AND recipient_id = ? AND read_at IS NULL")
+    .run(nowIso(), Number(id), user.id);
+  sendJson(res, 200, { ok: true });
+}
+
+function handleMarkAllRead(req, res) {
+  const user = requireUser(req, res);
+  if (!user) return;
+  db.prepare("UPDATE messages SET read_at = ? WHERE recipient_id = ? AND read_at IS NULL")
+    .run(nowIso(), user.id);
+  sendJson(res, 200, { ok: true });
+}
+
+// ── Hatcher application handlers ───────────────────────────────────────────
+
+async function handleSubmitApplication(req, res) {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const body = await readJsonBody(req);
+  const text = (value) => String(value || "").trim();
+
+  // One live application per user: a resubmit replaces their pending row so
+  // the admin queue never shows duplicates.
+  const stamp = nowIso();
+  const result = transact(() => {
+    const pending = db.prepare(
+      "SELECT id FROM hatcher_applications WHERE user_id = ? AND status = 'pending'",
+    ).get(user.id);
+    if (pending) {
+      db.prepare(`
+        UPDATE hatcher_applications
+        SET name = ?, email = ?, background = ?, tools = ?, industries = ?, example_tasks = ?, created_at = ?
+        WHERE id = ?
+      `).run(text(body.name) || user.name, user.email, text(body.background), text(body.tools),
+        text(body.industries), text(body.exampleTasks), stamp, pending.id);
+      return pending.id;
+    }
+    const inserted = db.prepare(`
+      INSERT INTO hatcher_applications (user_id, name, email, background, tools, industries, example_tasks, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(user.id, text(body.name) || user.name, user.email, text(body.background), text(body.tools),
+      text(body.industries), text(body.exampleTasks), stamp);
+    return Number(inserted.lastInsertRowid);
+  });
+
+  const row = db.prepare(`
+    SELECT a.*, u.username FROM hatcher_applications a JOIN users u ON u.id = a.user_id WHERE a.id = ?
+  `).get(result);
+  sendJson(res, 201, { ok: true, application: toClientApplication(row) });
+}
+
+function handleListApplications(req, res, url) {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const wantsAll = url.searchParams.get("all") === "1";
+  if (wantsAll && !isAdminUser(user)) return fail(res, 403, "This action needs an admin account.");
+
+  const rows = wantsAll
+    ? db.prepare(`
+        SELECT a.*, u.username FROM hatcher_applications a JOIN users u ON u.id = a.user_id
+        ORDER BY CASE a.status WHEN 'pending' THEN 0 ELSE 1 END, a.id DESC
+      `).all()
+    : db.prepare(`
+        SELECT a.*, u.username FROM hatcher_applications a JOIN users u ON u.id = a.user_id
+        WHERE a.user_id = ? ORDER BY a.id DESC
+      `).all(user.id);
+  sendJson(res, 200, { ok: true, applications: rows.map(toClientApplication) });
+}
+
+async function handleReviewApplication(req, res, id) {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const body = await readJsonBody(req);
+  const decision = body.decision;
+  if (decision !== "approve" && decision !== "reject") {
+    return fail(res, 400, 'The decision must be "approve" or "reject".');
+  }
+  const approving = decision === "approve";
+  const note = String(body.message || body.note || "").trim();
+
+  const outcome = transact(() => {
+    const application = db.prepare(
+      "SELECT * FROM hatcher_applications WHERE id = ?",
+    ).get(Number(id));
+    if (!application) return { errorStatus: 404, error: "Application not found." };
+    if (application.status !== "pending") {
+      return { errorStatus: 409, error: `This application was already ${application.status}.` };
+    }
+
+    db.prepare(`
+      UPDATE hatcher_applications SET status = ?, review_note = ?, reviewed_by = ?, reviewed_at = ?
+      WHERE id = ?
+    `).run(approving ? "approved" : "rejected", note || null, admin.id, nowIso(), application.id);
+
+    if (approving) {
+      // Grant the Hatcher role without dropping an existing Client role.
+      db.prepare("UPDATE users SET role = CASE WHEN role = 'Client' THEN 'Client and Hatcher' ELSE role END WHERE id = ?")
+        .run(application.user_id);
+    }
+
+    notify(application.user_id, {
+      senderId: admin.id,
+      kind: "admin",
+      subject: approving ? "Your Hatcher application was approved" : "Your Hatcher application was not approved",
+      body: note || (approving
+        ? "Welcome aboard! You can now claim Hatches from the Browse page."
+        : "Thanks for applying. You can update and resubmit your application from the Become a Hatcher page."),
+    });
+    return { application };
+  });
+
+  if (outcome.errorStatus) return fail(res, outcome.errorStatus, outcome.error);
+  const row = db.prepare(`
+    SELECT a.*, u.username FROM hatcher_applications a JOIN users u ON u.id = a.user_id WHERE a.id = ?
+  `).get(Number(id));
+  sendJson(res, 200, { ok: true, application: toClientApplication(row) });
+}
+
+// ── Admin handlers ─────────────────────────────────────────────────────────
+
+async function handleAdminDeleteHatch(req, res, id) {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const body = await readJsonBody(req).catch(() => ({}));
+  const note = String(body.note || "").trim();
+
+  const outcome = transact(() => {
+    const hatch = db.prepare("SELECT id, title, created_by, claimed_by FROM hatches WHERE id = ?").get(id);
+    if (!hatch) return { errorStatus: 404, error: "Hatch not found." };
+
+    // Children first: these tables reference hatches(id) without cascades.
+    db.prepare("DELETE FROM payments WHERE hatch_id = ?").run(id);
+    db.prepare("DELETE FROM submissions WHERE hatch_id = ?").run(id);
+    db.prepare("DELETE FROM hatch_events WHERE hatch_id = ?").run(id);
+    db.prepare("DELETE FROM hatches WHERE id = ?").run(id);
+
+    const subject = `Your Hatch "${hatch.title}" was removed`;
+    const bodyText = note || "An admin removed this Hatch. Reply to this message if you think this was a mistake.";
+    notify(hatch.created_by, { senderId: admin.id, kind: "admin", subject, body: bodyText, hatchId: hatch.id });
+    if (hatch.claimed_by && hatch.claimed_by !== hatch.created_by) {
+      notify(hatch.claimed_by, {
+        senderId: admin.id,
+        kind: "admin",
+        subject: `The Hatch "${hatch.title}" you were working on was removed`,
+        body: bodyText,
+        hatchId: hatch.id,
+      });
+    }
+    return {};
+  });
+
+  if (outcome.errorStatus) return fail(res, outcome.errorStatus, outcome.error);
+  sendJson(res, 200, { ok: true, deleted: id });
+}
+
+async function handleAdminMessage(req, res) {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const body = await readJsonBody(req);
+  const to = String(body.to || body.username || body.email || "").trim();
+  const messageBody = String(body.body || body.message || "").trim();
+  if (!to) return fail(res, 400, 'Say who the message is for in a "to" field (username or email).');
+  if (!messageBody) return fail(res, 400, "The message body cannot be empty.");
+
+  const recipient = db.prepare("SELECT id, username FROM users WHERE username = ? OR email = ?").get(to, to);
+  if (!recipient) return fail(res, 404, `No account matches "${to}".`);
+
+  notify(recipient.id, {
+    senderId: admin.id,
+    kind: "admin",
+    subject: String(body.subject || "").trim() || "Message from the Hatch team",
+    body: messageBody,
+  });
+  sendJson(res, 200, { ok: true, to: recipient.username });
 }
 
 // ── Router ─────────────────────────────────────────────────────────────────
@@ -581,16 +889,34 @@ async function route(req, res, url) {
   if (req.method === "GET" && p === "/api/auth/me") return handleMe(req, res);
   if (req.method === "POST" && p === "/api/auth/logout") return handleLogout(req, res);
 
+  if (req.method === "GET" && p === "/api/inbox") return handleInbox(req, res);
+  if (req.method === "POST" && p === "/api/inbox/read-all") return handleMarkAllRead(req, res);
+
+  if (p === "/api/hatcher-applications") {
+    if (req.method === "GET") return handleListApplications(req, res, url);
+    if (req.method === "POST") return handleSubmitApplication(req, res);
+    return fail(res, 405, "Method not allowed.");
+  }
+
+  if (req.method === "POST" && p === "/api/admin/messages") return handleAdminMessage(req, res);
+
   if (p === "/api/hatches") {
     if (req.method === "GET") return handleListHatches(req, res, url);
     if (req.method === "POST") return handleCreateHatch(req, res);
     return fail(res, 405, "Method not allowed.");
   }
 
-  const parts = p.split("/").filter(Boolean); // ["api", "hatches", id, action?]
+  const parts = p.split("/").filter(Boolean); // ["api", section, id, action?]
+  if (parts[0] === "api" && parts[1] === "inbox" && parts.length === 4 && parts[3] === "read" && req.method === "POST") {
+    return handleMarkRead(req, res, parts[2]);
+  }
+  if (parts[0] === "api" && parts[1] === "hatcher-applications" && parts.length === 4 && parts[3] === "review" && req.method === "POST") {
+    return handleReviewApplication(req, res, parts[2]);
+  }
   if (parts[0] === "api" && parts[1] === "hatches" && parts[2]) {
     const id = decodeURIComponent(parts[2]);
     if (parts.length === 3 && req.method === "GET") return handleGetHatch(req, res, id);
+    if (parts.length === 3 && req.method === "DELETE") return handleAdminDeleteHatch(req, res, id);
     if (parts.length === 4 && req.method === "POST" && HATCH_ACTIONS[parts[3]]) {
       return HATCH_ACTIONS[parts[3]](req, res, id);
     }
@@ -599,10 +925,12 @@ async function route(req, res, url) {
   return fail(res, 404, "Unknown API route.");
 }
 
+const API_PREFIXES = ["/api/auth", "/api/hatches", "/api/inbox", "/api/hatcher-applications", "/api/admin"];
+
 // Returns true when the request was an API route this module owns.
 function handle(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-  if (!url.pathname.startsWith("/api/auth") && !url.pathname.startsWith("/api/hatches")) {
+  if (!API_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
     return false;
   }
   route(req, res, url).catch((error) => {

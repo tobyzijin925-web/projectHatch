@@ -101,6 +101,41 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_submissions_hatch ON submissions(hatch_id);
 
+  -- Hatcher applications reviewed by an admin (approve/reject).
+  CREATE TABLE IF NOT EXISTS hatcher_applications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    background TEXT NOT NULL DEFAULT '',
+    tools TEXT NOT NULL DEFAULT '',
+    industries TEXT NOT NULL DEFAULT '',
+    example_tasks TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    review_note TEXT,
+    reviewed_by INTEGER REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    reviewed_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_applications_user ON hatcher_applications(user_id);
+  CREATE INDEX IF NOT EXISTS idx_applications_status ON hatcher_applications(status);
+
+  -- Per-user inbox: admin notices, client/hatcher updates, system events.
+  -- hatch_id is intentionally not a foreign key so messages survive an
+  -- admin deleting the hatch they refer to.
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recipient_id INTEGER NOT NULL REFERENCES users(id),
+    sender_id INTEGER REFERENCES users(id),
+    kind TEXT NOT NULL DEFAULT 'system' CHECK (kind IN ('system', 'admin', 'client', 'hatcher')),
+    subject TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    hatch_id TEXT,
+    read_at TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_id, read_at);
+
   -- Escrow/payout ledger. Rows are stubs until a payment provider is wired in
   -- via the onStateTransition hook in hatchApi.js.
   CREATE TABLE IF NOT EXISTS payments (

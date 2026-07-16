@@ -420,10 +420,11 @@ window.SkillNestPages = (() => {
     `;
   }
 
-  function profilePage(account, postedTasks, missions, operatorApplications = []) {
+  function profilePage(account, postedTasks, missions, operatorApplications = [], inbox = { messages: [], unreadCount: 0 }, adminData = { applications: [], hatches: [] }, adminHatches = []) {
     const accepted = missions.filter((mission) => mission.status === "Incubating" || mission.status === "Accepted");
     const saved = missions.filter((mission) => mission.status === "Saved");
     const profileNotice = localStorage.getItem("hatchProfileNotice") || "";
+    const unread = inbox.unreadCount || 0;
     return `
       <main class="section page">
         ${profileNotice ? `<div class="success-message show profile-notice">${C.escapeHtml(profileNotice)}</div>` : ""}
@@ -472,13 +473,103 @@ window.SkillNestPages = (() => {
           </section>
           <section class="profile-card wide">
             <div class="card-title-row">
+              <h2>Inbox${unread ? ` <span class="unread-badge">${unread} new</span>` : ""}</h2>
+              ${unread ? `<button class="btn ghost small" type="button" onclick="SkillNestApp.markAllMessagesRead()">Mark all read</button>` : ""}
+            </div>
+            ${inboxList(inbox)}
+          </section>
+          <section class="profile-card wide">
+            <div class="card-title-row">
               <h2>Hatcher application</h2>
               <button class="btn secondary small" type="button" onclick="SkillNestApp.setRoute('operator')">Update application</button>
             </div>
             ${operatorApplicationSummary(operatorApplications)}
           </section>
+          ${account.isAdmin ? adminPanel(adminData, adminHatches) : ""}
         </div>
       </main>
+    `;
+  }
+
+  function inboxList(inbox) {
+    const messages = inbox.messages || [];
+    if (!messages.length) {
+      return `<p class="muted-text">Updates from clients, Hatchers, and the Hatch team will appear here.</p>`;
+    }
+    const kindLabel = { admin: "Hatch team", client: "Client update", hatcher: "Hatcher update", system: "Hatch" };
+    return `
+      <div class="profile-list inbox-list">
+        ${messages.map((message) => `
+          <article class="${message.read ? "" : "inbox-unread"}">
+            <div>
+              <h3>${C.escapeHtml(message.subject || "(no subject)")}</h3>
+              <p>${C.escapeHtml(message.body)}</p>
+              <p class="inbox-meta">${C.escapeHtml(kindLabel[message.kind] || "Hatch")}${message.from ? ` &middot; ${C.escapeHtml(message.from.name || message.from.username)}` : ""} &middot; ${C.escapeHtml(new Date(message.createdAt).toLocaleString())}</p>
+            </div>
+            <div class="mission-actions">
+              ${message.read ? "" : `<button class="btn ghost small" type="button" onclick="SkillNestApp.markMessageRead(${Number(message.id)})">Mark read</button>`}
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  function adminPanel(adminData, adminHatches) {
+    const applications = adminData.applications || [];
+    const pending = applications.filter((application) => application.status === "pending");
+    const reviewed = applications.length - pending.length;
+    const sourceLabel = { posted: "posted here", seed: "demo listing", backend: "backend" };
+    return `
+      <section class="profile-card wide admin-panel">
+        <div class="card-title-row"><h2>Admin &middot; Hatcher applications</h2></div>
+        ${pending.length ? `
+          <div class="profile-list">
+            ${pending.map((application) => `
+              <article>
+                <div>
+                  <h3>${C.escapeHtml(application.name || application.username)} <span class="inbox-meta">@${C.escapeHtml(application.username)} &middot; ${C.escapeHtml(application.email)}</span></h3>
+                  <p>${C.escapeHtml([application.background, application.tools, application.industries, application.exampleTasks].filter(Boolean).join(" · ") || "No details provided.")}</p>
+                  <input class="admin-note-input" id="adminAppNote-${Number(application.id)}" type="text" placeholder="Optional message for the applicant's inbox" />
+                </div>
+                <div class="mission-actions">
+                  <button class="btn secondary small" type="button" onclick="SkillNestApp.adminReviewApplication(${Number(application.id)}, 'approve')">Approve</button>
+                  <button class="btn ghost small danger" type="button" onclick="SkillNestApp.adminReviewApplication(${Number(application.id)}, 'reject')">Reject</button>
+                </div>
+              </article>
+            `).join("")}
+          </div>
+        ` : `<p class="muted-text">No pending applications.</p>`}
+        ${reviewed ? `<p class="muted-text">${reviewed} application${reviewed === 1 ? "" : "s"} reviewed earlier.</p>` : ""}
+      </section>
+      <section class="profile-card wide admin-panel">
+        <div class="card-title-row"><h2>Admin &middot; All Hatches</h2></div>
+        ${adminHatches.length ? `
+          <div class="profile-list">
+            ${adminHatches.map((hatch) => `
+              <article>
+                <div>
+                  <h3>${C.escapeHtml(hatch.title)}</h3>
+                  <p>${C.escapeHtml(hatch.business || "")} &middot; ${C.escapeHtml(sourceLabel[hatch.source] || hatch.source)}</p>
+                </div>
+                <div class="mission-actions">
+                  <span>${C.escapeHtml(hatch.status || "Open")}</span>
+                  <button class="btn ghost small danger" type="button" onclick="SkillNestApp.adminDeleteHatch('${C.escapeHtml(hatch.id)}')">Delete</button>
+                </div>
+              </article>
+            `).join("")}
+          </div>
+        ` : `<p class="muted-text">No Hatches to manage yet.</p>`}
+      </section>
+      <section class="profile-card wide admin-panel">
+        <div class="card-title-row"><h2>Admin &middot; Send a message</h2></div>
+        <form class="admin-message-form" onsubmit="SkillNestApp.adminSendMessage(event)">
+          <input id="adminMessageTo" type="text" placeholder="Username or email" required />
+          <input id="adminMessageSubject" type="text" placeholder="Subject" />
+          <textarea id="adminMessageBody" rows="3" placeholder="Message" required></textarea>
+          <button class="btn secondary small" type="submit">Send to inbox</button>
+        </form>
+      </section>
     `;
   }
 
@@ -488,6 +579,8 @@ window.SkillNestPages = (() => {
     const row = (label, value) => `<div><dt>${label}</dt><dd>${C.escapeHtml(value || "-")}</dd></div>`;
     return `
       <dl class="application-summary">
+        ${row("Status", application.status)}
+        ${application.reviewNote ? row("Reviewer note", application.reviewNote) : ""}
         ${row("Name", application.name)}
         ${row("Email", application.email)}
         ${row("Background", application.background)}

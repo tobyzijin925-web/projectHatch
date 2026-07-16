@@ -38,6 +38,72 @@ window.SkillNestApp = (() => {
     }
   }
 
+  // ── Backend client ─────────────────────────────────────────────────────────
+  // The sync backend (hatchApi.js) holds accounts, hatcher applications, and
+  // inboxes in SQLite. localStorage stays as the offline fallback: every call
+  // here degrades to null so callers can keep the local behavior when the
+  // server is down or the account never got a backend session.
+
+  function backendUrl(path) {
+    if (window.location.protocol === "file:") return `http://127.0.0.1:8132${path}`;
+    return path;
+  }
+
+  function backendToken() {
+    return localStorage.getItem("hatchAuthToken") || "";
+  }
+
+  async function backendFetch(path, { method = "GET", body } = {}) {
+    const headers = { "Content-Type": "application/json" };
+    const token = backendToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    try {
+      const response = await fetch(backendUrl(path), {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const data = await response.json().catch(() => ({}));
+      return { status: response.status, ...data };
+    } catch {
+      return null; // backend unreachable — callers fall back to localStorage
+    }
+  }
+
+  // Stores a backend login: token plus the server's view of the account
+  // (which carries isAdmin and the server-assigned role).
+  function storeBackendSession(data, localExtras = {}) {
+    if (!data?.ok || !data.token) return false;
+    localStorage.setItem("hatchAuthToken", data.token);
+    const current = readJson("skillnestAccount", {});
+    localStorage.setItem("skillnestAccount", JSON.stringify({ ...current, ...localExtras, ...data.account }));
+    return true;
+  }
+
+  // Backend signup requires 6+ char passwords; older local demo accounts may
+  // have shorter ones, so pad deterministically to keep login reproducible.
+  function backendPassword(password = "") {
+    return password.length >= 6 ? password : `${password}#hatch-local`;
+  }
+
+  // Refreshes the account from the server (role changes, admin flag) and
+  // re-renders when anything user-visible changed.
+  async function refreshBackendAccount() {
+    if (!backendToken()) return;
+    const data = await backendFetch("/api/auth/me");
+    if (data?.status === 401) {
+      localStorage.removeItem("hatchAuthToken");
+      return;
+    }
+    if (!data?.ok || !data.account) return;
+    const current = readJson("skillnestAccount", {});
+    const merged = { ...current, ...data.account };
+    if (JSON.stringify(merged) !== JSON.stringify(current)) {
+      localStorage.setItem("skillnestAccount", JSON.stringify(merged));
+      render();
+    }
+  }
+
   function getAccount() {
     const account = readJson("skillnestAccount", {});
     if (account.role === "AI Builder") return { ...account, role: "Hatcher" };
@@ -88,7 +154,8 @@ window.SkillNestApp = (() => {
       };
     });
     const postedIds = new Set(posted.map((task) => task.id));
-    return [...posted, ...tasks.filter((task) => !postedIds.has(task.id))];
+    const removedSeeds = new Set(readJson("hatchRemovedSeedTasks", []));
+    return [...posted, ...tasks.filter((task) => !postedIds.has(task.id) && !removedSeeds.has(task.id))];
   }
 
   function getOperatorApplications() {
@@ -2948,6 +3015,14 @@ window.SkillNestApp = (() => {
 
     const postedTask = reviewedBriefToPostedTask(brief);
     saveListItem("skillnestPostedTasks", postedTask, "id");
+    // Mirror to the backend so it exists server-side (admin can manage it and
+    // lifecycle updates reach inboxes). Files stay local: they hold blob URLs.
+    if (backendToken()) {
+      backendFetch("/api/hatches", { method: "POST", body: { ...postedTask, files: [] } }).then((result) => {
+        if (!result?.ok) return;
+        saveListItem("skillnestPostedTasks", { ...postedTask, backendId: result.hatch.id }, "id");
+      });
+    }
     localStorage.setItem("hatchProfileNotice", "Your Hatch has been submitted.");
     localStorage.setItem("hatchBrowseNotice", "Your Hatch has been submitted and is now listed here.");
     localStorage.removeItem("hatchPendingSubmit");
@@ -3015,17 +3090,7 @@ window.SkillNestApp = (() => {
     if (options.redirect !== false) setRoute("home");
   }
 
-  function completeLogin(event) {
-    event.preventDefault();
-    const account = getAccount();
-    const usernameOrEmail = document.getElementById("loginUsername").value.trim();
-    const password = document.getElementById("loginPassword").value;
-    const matchesIdentity = usernameOrEmail === account.username || usernameOrEmail === account.email;
-    const matchesPassword = !account.password || password === account.password;
-    if (!matchesIdentity || !matchesPassword) {
-      document.getElementById("loginError")?.classList.add("show");
-      return;
-    }
+  function finishAuth(account) {
     localStorage.setItem("skillnestLoggedIn", "true");
     if (localStorage.getItem("hatchPendingSubmit") === "true") {
       submitReviewedHatch();
@@ -3035,7 +3100,49 @@ window.SkillNestApp = (() => {
     setRoute(accountRoute(account));
   }
 
-  function completeSignup(event) {
+  async function completeLogin(event) {
+    event.preventDefault();
+    const local = getAccount();
+    const usernameOrEmail = document.getElementById("loginUsername").value.trim();
+    const password = document.getElementById("loginPassword").value;
+
+    // Backend first, so the session carries server truth (role, isAdmin).
+    const result = await backendFetch("/api/auth/login", {
+      method: "POST",
+      body: { usernameOrEmail, password: backendPassword(password) },
+    });
+    if (result?.ok) {
+      storeBackendSession(result, { password });
+      finishAuth(getAccount());
+      return;
+    }
+
+    // Backend down or unknown account: legacy local check.
+    const matchesIdentity = usernameOrEmail === local.username || usernameOrEmail === local.email;
+    const matchesPassword = !local.password || password === local.password;
+    if (!matchesIdentity || !matchesPassword) {
+      document.getElementById("loginError")?.classList.add("show");
+      return;
+    }
+    // Local-only account against a live backend: migrate it so the account
+    // (and its inbox) exists server-side from now on.
+    if (result !== null) {
+      const migrated = await backendFetch("/api/auth/signup", {
+        method: "POST",
+        body: {
+          username: local.username,
+          name: local.name,
+          email: local.email,
+          password: backendPassword(password || local.password || local.username),
+          role: local.role,
+        },
+      });
+      if (migrated?.ok) storeBackendSession(migrated, { password });
+    }
+    finishAuth(getAccount());
+  }
+
+  async function completeSignup(event) {
     event.preventDefault();
     const account = {
       username: document.getElementById("authUsername").value.trim(),
@@ -3046,16 +3153,23 @@ window.SkillNestApp = (() => {
       joinedAt: new Date().toISOString(),
     };
     localStorage.setItem("skillnestAccount", JSON.stringify(account));
-    localStorage.setItem("skillnestLoggedIn", "true");
-    if (localStorage.getItem("hatchPendingSubmit") === "true") {
-      submitReviewedHatch();
-      return;
+
+    let result = await backendFetch("/api/auth/signup", {
+      method: "POST",
+      body: { ...account, password: backendPassword(account.password) },
+    });
+    // Already registered on the backend (e.g. new browser): sign in instead.
+    if (result && !result.ok) {
+      result = await backendFetch("/api/auth/login", {
+        method: "POST",
+        body: { usernameOrEmail: account.username || account.email, password: backendPassword(account.password) },
+      });
     }
-    if (completePendingMission()) return;
-    setRoute(accountRoute(account));
+    if (result?.ok) storeBackendSession(result, { password: account.password });
+    finishAuth(getAccount());
   }
 
-  function quickTestLogin() {
+  async function quickTestLogin() {
     const account = {
       username: "test_hatcher",
       name: "Test Hatcher",
@@ -3066,6 +3180,17 @@ window.SkillNestApp = (() => {
       joinedAt: new Date().toISOString(),
     };
     localStorage.setItem("skillnestAccount", JSON.stringify(account));
+    let result = await backendFetch("/api/auth/login", {
+      method: "POST",
+      body: { usernameOrEmail: account.username, password: backendPassword(account.password) },
+    });
+    if (result && !result.ok) {
+      result = await backendFetch("/api/auth/signup", {
+        method: "POST",
+        body: { ...account, password: backendPassword(account.password) },
+      });
+    }
+    if (result?.ok) storeBackendSession(result, { password: account.password, provider: account.provider });
     localStorage.setItem("skillnestLoggedIn", "true");
     if (localStorage.getItem("hatchPendingSubmit") === "true") {
       submitReviewedHatch();
@@ -3080,6 +3205,8 @@ window.SkillNestApp = (() => {
   }
 
   function logout() {
+    if (backendToken()) backendFetch("/api/auth/logout", { method: "POST" });
+    localStorage.removeItem("hatchAuthToken");
     localStorage.removeItem("skillnestLoggedIn");
     setRoute("home");
     render();
@@ -3289,8 +3416,16 @@ window.SkillNestApp = (() => {
 
   function deletePostedTask(identifier) {
     if (!window.confirm("Delete this posted Hatch?")) return;
+    const target = getPostedTasks().find((task) => task.id === identifier || encodeURIComponent(task.title) === identifier);
     const postedTasks = getPostedTasks().filter((task) => task.id !== identifier && encodeURIComponent(task.title) !== identifier);
     localStorage.setItem("skillnestPostedTasks", JSON.stringify(postedTasks));
+    // Clean up the backend mirror too: admins delete outright, owners cancel.
+    if (target?.backendId && backendToken()) {
+      const path = `/api/hatches/${encodeURIComponent(target.backendId)}`;
+      backendFetch(path, { method: "DELETE" }).then((result) => {
+        if (!result?.ok) backendFetch(`${path}/cancel`, { method: "POST" });
+      });
+    }
     render();
   }
 
@@ -3439,7 +3574,176 @@ window.SkillNestApp = (() => {
       localStorage.setItem("skillnestAccount", JSON.stringify({ ...account, name: draft.name }));
     }
     saveListItem("skillnestOperatorApplications", application, "id");
+    // Mirror to the backend queue so the admin can approve or reject it.
+    if (backendToken()) {
+      backendFetch("/api/hatcher-applications", { method: "POST", body: application }).then((result) => {
+        if (!result?.ok) return;
+        saveListItem("skillnestOperatorApplications", {
+          ...application,
+          backendId: result.application.id,
+          status: "Pending review",
+        }, "id");
+      });
+    }
     saveOperatorWizard("done", {});
+    render();
+  }
+
+  // Pulls the reviewed status (approved/rejected + admin note) back into the
+  // local application list shown on the profile.
+  async function refreshApplicationStatus() {
+    if (!backendToken()) return;
+    const data = await backendFetch("/api/hatcher-applications");
+    if (!data?.ok || !data.applications?.length) return;
+    const local = getOperatorApplications();
+    const statusLabel = { pending: "Pending review", approved: "Approved", rejected: "Not approved" };
+    let changed = false;
+    const next = local.map((application) => {
+      const remote = data.applications.find((item) => item.id === application.backendId)
+        || data.applications[0];
+      const label = statusLabel[remote.status] || application.status;
+      if (application.status !== label || application.reviewNote !== remote.reviewNote) {
+        changed = true;
+        return { ...application, backendId: remote.id, status: label, reviewNote: remote.reviewNote || "" };
+      }
+      return application;
+    });
+    if (changed) {
+      localStorage.setItem("skillnestOperatorApplications", JSON.stringify(next));
+      render();
+    }
+  }
+
+  // ── Inbox ──────────────────────────────────────────────────────────────────
+  // The inbox lives on the backend; a localStorage cache lets render() stay
+  // synchronous. Refreshes re-render only when something actually changed,
+  // so the refresh-inside-render cycle settles instead of looping.
+
+  function getInbox() {
+    return readJson("hatchInboxCache", { messages: [], unreadCount: 0 });
+  }
+
+  let inboxRefreshInFlight = false;
+  async function refreshInbox() {
+    if (!backendToken() || inboxRefreshInFlight) return;
+    inboxRefreshInFlight = true;
+    const data = await backendFetch("/api/inbox");
+    inboxRefreshInFlight = false;
+    if (!data?.ok) return;
+    const cache = JSON.stringify({ messages: data.messages, unreadCount: data.unreadCount });
+    if (cache !== localStorage.getItem("hatchInboxCache")) {
+      localStorage.setItem("hatchInboxCache", cache);
+      render();
+    }
+  }
+
+  async function markMessageRead(id) {
+    await backendFetch(`/api/inbox/${id}/read`, { method: "POST" });
+    refreshInbox();
+  }
+
+  async function markAllMessagesRead() {
+    await backendFetch("/api/inbox/read-all", { method: "POST" });
+    refreshInbox();
+  }
+
+  // ── Admin ──────────────────────────────────────────────────────────────────
+
+  function getAdminData() {
+    return readJson("hatchAdminCache", { applications: [], hatches: [] });
+  }
+
+  let adminRefreshInFlight = false;
+  async function refreshAdminData() {
+    if (!getAccount().isAdmin || !backendToken() || adminRefreshInFlight) return;
+    adminRefreshInFlight = true;
+    const [applications, hatches] = await Promise.all([
+      backendFetch("/api/hatcher-applications?all=1"),
+      backendFetch("/api/hatches?state=all"),
+    ]);
+    adminRefreshInFlight = false;
+    if (!applications?.ok && !hatches?.ok) return;
+    const cache = JSON.stringify({
+      applications: applications?.ok ? applications.applications : getAdminData().applications,
+      hatches: hatches?.ok ? hatches.hatches : getAdminData().hatches,
+    });
+    if (cache !== localStorage.getItem("hatchAdminCache")) {
+      localStorage.setItem("hatchAdminCache", cache);
+      render();
+    }
+  }
+
+  // One list covering everything an admin can see: hatches posted in this
+  // browser, demo seed hatches, and hatches that only exist on the backend.
+  function adminHatchList() {
+    const posted = new Set(getPostedTasks().map((task) => task.id));
+    const locals = marketplaceTasks().map((task) => ({
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      level: task.level,
+      business: task.business,
+      backendId: task.backendId || "",
+      source: posted.has(task.id) ? "posted" : "seed",
+    }));
+    const known = new Set(locals.map((task) => task.backendId).filter(Boolean));
+    const remoteOnly = getAdminData().hatches
+      .filter((hatch) => !known.has(hatch.id))
+      .map((hatch) => ({
+        id: hatch.id,
+        title: hatch.title,
+        status: hatch.status,
+        level: hatch.level,
+        business: hatch.createdBy?.name || hatch.createdBy?.username || hatch.business || "",
+        backendId: hatch.id,
+        source: "backend",
+      }));
+    return [...locals, ...remoteOnly];
+  }
+
+  async function adminReviewApplication(id, decision) {
+    const note = document.getElementById(`adminAppNote-${id}`)?.value.trim() || "";
+    const result = await backendFetch(`/api/hatcher-applications/${id}/review`, {
+      method: "POST",
+      body: { decision, message: note },
+    });
+    localStorage.setItem("hatchProfileNotice", result?.ok
+      ? `Application ${decision === "approve" ? "approved" : "rejected"}. The applicant was notified in their inbox.`
+      : result?.error || "The backend is unreachable, so the application was not reviewed.");
+    await refreshAdminData();
+    render();
+  }
+
+  async function adminDeleteHatch(id) {
+    if (!window.confirm("Delete this Hatch for everyone?")) return;
+    const entry = adminHatchList().find((item) => item.id === id);
+    let notice = "Hatch deleted.";
+    if (entry?.backendId) {
+      const result = await backendFetch(`/api/hatches/${encodeURIComponent(entry.backendId)}`, { method: "DELETE" });
+      if (result?.ok) notice = "Hatch deleted. The people on it were notified in their inbox.";
+      else if (result) notice = result.error || "The backend refused to delete this Hatch.";
+    }
+    if (entry?.source === "posted") {
+      localStorage.setItem("skillnestPostedTasks", JSON.stringify(getPostedTasks().filter((task) => task.id !== id)));
+    } else if (entry?.source === "seed") {
+      const removed = readJson("hatchRemovedSeedTasks", []);
+      if (!removed.includes(id)) removed.push(id);
+      localStorage.setItem("hatchRemovedSeedTasks", JSON.stringify(removed));
+    }
+    localStorage.setItem("hatchProfileNotice", notice);
+    await refreshAdminData();
+    render();
+  }
+
+  async function adminSendMessage(event) {
+    event.preventDefault();
+    const to = document.getElementById("adminMessageTo")?.value.trim() || "";
+    const subject = document.getElementById("adminMessageSubject")?.value.trim() || "";
+    const body = document.getElementById("adminMessageBody")?.value.trim() || "";
+    const result = await backendFetch("/api/admin/messages", { method: "POST", body: { to, subject, body } });
+    localStorage.setItem("hatchProfileNotice", result?.ok
+      ? `Message sent to ${result.to}.`
+      : result?.error || "The backend is unreachable, so the message was not sent.");
     render();
   }
 
@@ -3573,8 +3877,18 @@ window.SkillNestApp = (() => {
       : route === "verified-work"
         ? Pages.verifiedWorkPage()
       : route === "profile"
-        ? (isLoggedIn() ? Pages.profilePage(account, getPostedTasks(), getMissions(), getOperatorApplications()) : Pages.authPage())
+        ? (isLoggedIn()
+          ? Pages.profilePage(account, getPostedTasks(), getMissions(), getOperatorApplications(), getInbox(), getAdminData(), account.isAdmin ? adminHatchList() : [])
+          : Pages.authPage())
       : Pages.homePage(draftTask, files);
+
+    // Profile data lives on the backend; kick off refreshes that re-render
+    // only when the cached copy is stale.
+    if (route === "profile" && isLoggedIn()) {
+      refreshInbox();
+      refreshApplicationStatus();
+      refreshAdminData();
+    }
 
     document.getElementById("app").innerHTML = `<div class="app-shell">${C.nav(route, isLoggedIn(), account)}${page}${C.footer(isLoggedIn(), account)}</div>`;
     requestAnimationFrame(() => {
@@ -3634,6 +3948,12 @@ window.SkillNestApp = (() => {
     removeDraftFile,
     removePostedTaskFile,
     render,
+    refreshBackendAccount,
+    markMessageRead,
+    markAllMessagesRead,
+    adminReviewApplication,
+    adminDeleteHatch,
+    adminSendMessage,
     saveMission,
     saveHatchDraft,
     setRoute,
@@ -3666,4 +3986,6 @@ window.SkillNestApp = (() => {
 
 SkillNestApp.applyDarkModePreference();
 SkillNestApp.render();
+// Pick up server-side account changes (role upgrades, admin flag) at boot.
+window.setTimeout(() => SkillNestApp.refreshBackendAccount(), 300);
 window.testDeepSeekConnection = SkillNestApp.testDeepSeekConnection;
