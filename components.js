@@ -1139,27 +1139,41 @@ window.SkillNestComponents = (() => {
     const activeIndex = Math.min(Number(localStorage.getItem("hatchActiveSectionIndex") || 0), builderSections.length);
     const ready = shouldShowFinalReview(brief, activeIndex);
     const processing = Boolean(brief?.isProcessing);
+    // "Thinking" covers both the first-run processing brief and any in-flight
+    // refine turn (flagged in localStorage), so the animated bubble shows while
+    // the assistant is working, in place of a static placeholder message.
+    const thinking = processing || localStorage.getItem("hatchAssistantThinking") === "true";
     const invalid = brief?.stage === "invalid_input" || brief?.isValidProject === false || Number(brief?.confidence || 0) < 40;
     const placeholder = invalid ? "Tell Hatch what you want to build or get done..." : "Reply to Hatch...";
-    const contextualSuggestions = !processing && !ready && !invalid && question?.suggestions?.length ? question.suggestions : [];
+    const contextualSuggestions = !thinking && !ready && !invalid && question?.suggestions?.length ? question.suggestions : [];
     const files = readLocalJson("skillnestDraftFiles", []);
     const completed = readLocalJson("hatchCompletedSections", []);
     const activeSectionId = builderSections[activeIndex]?.id || "";
-    const showFileTools = !processing && !ready && !invalid && activeSectionId === "references";
+    const showFileTools = !thinking && !ready && !invalid && activeSectionId === "references";
     const debugState = window.HatchAIController?.getState?.() || {};
+    // Hide the fallback greeting while thinking with an empty thread, so the
+    // very first response shows just the thinking bubble, then types in.
+    const threadMessages = messages.length ? messages : (thinking ? [] : shownMessages);
 
     return `
       <section class="assistant-panel">
-        ${processing ? `<div class="reading-indicator"><span></span><span></span><span></span></div>` : ""}
         ${aiError ? `<div class="assistant-dev-warning">${escapeHtml(aiError)}</div>` : ""}
         ${aiDebugPanelMarkup(debugState)}
         <div class="assistant-thread" id="assistantThread">
-          ${shownMessages.map((message) => `
-            <article class="assistant-message ${message.role}">
+          ${threadMessages.map((message, index) => `
+            <article class="assistant-message ${message.role}" data-msg-index="${index}">
               <span>${message.role === "assistant" ? "Hatch Assistant" : "You"}</span>
               <p>${escapeHtml(message.text)}</p>
             </article>
           `).join("")}
+          ${thinking ? `
+            <article class="thinking-bubble assistant" aria-live="polite">
+              <span>Hatch Assistant</span>
+              <div class="thinking-dots" role="status" aria-label="Hatch is thinking">
+                <span></span><span></span><span></span>
+              </div>
+            </article>
+          ` : ""}
         </div>
         ${ready ? finalReviewMarkup(brief, files, completed) : ""}
         ${showFileTools ? referenceAttachmentMarkup(files, contextualSuggestions) : ""}
@@ -1167,7 +1181,7 @@ window.SkillNestComponents = (() => {
           <small>Reply naturally, or choose one below.</small>
           ${contextualSuggestions.map((item) => `<button class="choice-chip" type="button" onclick="SkillNestApp.sendAssistantReply(decodeURIComponent('${encodeURIComponent(item)}'))">${escapeHtml(item)}</button>`).join("")}
         </div>` : ""}
-        ${processing || ready ? "" : `
+        ${thinking || ready ? "" : `
           <div class="assistant-compose">
             <input id="assistantReply" type="text" placeholder="${escapeHtml(placeholder)}" onkeydown="SkillNestApp.handleAssistantReplyKey(event)" />
             <button class="btn primary small" type="button" onclick="SkillNestApp.sendAssistantReply()">Send</button>

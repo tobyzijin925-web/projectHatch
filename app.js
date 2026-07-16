@@ -207,6 +207,88 @@ window.SkillNestApp = (() => {
     return splitAssistantText(text).map((chunk) => ({ role: "assistant", text: chunk }));
   }
 
+  // ── Assistant "thinking" + real-time typing ────────────────────────────────
+  // The thinking flag drives the animated dots bubble while a turn is in flight.
+  // The typing watermark (hatchTypedCount) records how many messages have already
+  // been revealed, so only newly-arrived assistant bubbles type out — a re-render
+  // for any other reason leaves settled messages fully shown.
+
+  function setAssistantThinking(on) {
+    localStorage.setItem("hatchAssistantThinking", on ? "true" : "false");
+  }
+
+  // Call when a brand-new conversation starts so its first reply types in.
+  function resetAssistantTyping() {
+    localStorage.setItem("hatchTypedCount", "0");
+    localStorage.setItem("hatchAssistantThinking", "false");
+  }
+
+  let typingTimers = [];
+  function clearTypingTimers() {
+    typingTimers.forEach((id) => window.clearTimeout(id));
+    typingTimers = [];
+  }
+
+  function typingDelayFor(text) {
+    // Keep long replies snappy; short ones get a touch more character.
+    return text.length > 220 ? 6 : text.length > 90 ? 11 : 18;
+  }
+
+  // Reveals any assistant bubbles past the watermark one character at a time.
+  // Runs after render(); no-ops when nothing new arrived.
+  function animateAssistantTyping() {
+    if (currentRoute() !== "task-review") return;
+    const thread = document.getElementById("assistantThread");
+    if (!thread) return;
+    const messages = getAssistantMessages();
+    if (!messages.length) {
+      localStorage.setItem("hatchTypedCount", "0");
+      return;
+    }
+    const typedCount = Number(localStorage.getItem("hatchTypedCount") || 0);
+    if (messages.length <= typedCount) return; // nothing new to reveal
+
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    const articles = [...thread.querySelectorAll(".assistant-message")];
+    clearTypingTimers();
+
+    const queue = [];
+    articles.forEach((article, index) => {
+      if (index < typedCount) return; // already revealed on a prior render
+      const paragraph = article.querySelector("p");
+      if (!paragraph) return;
+      // Only assistant bubbles type; the user's own message appears at once.
+      if (article.classList.contains("assistant") && !article.classList.contains("user")) {
+        queue.push({ paragraph, full: paragraph.textContent, article });
+        if (!reduceMotion) {
+          paragraph.textContent = "";
+          article.classList.add("is-typing");
+        }
+      }
+    });
+    localStorage.setItem("hatchTypedCount", String(messages.length));
+    if (reduceMotion || !queue.length) return;
+
+    const revealNext = (i) => {
+      if (i >= queue.length) return;
+      const { paragraph, full, article } = queue[i];
+      let pos = 0;
+      const tick = () => {
+        pos = Math.min(full.length, pos + 1);
+        paragraph.textContent = full.slice(0, pos);
+        scrollAssistantToLatest();
+        if (pos < full.length) {
+          typingTimers.push(window.setTimeout(tick, typingDelayFor(full)));
+        } else {
+          article.classList.remove("is-typing");
+          typingTimers.push(window.setTimeout(() => revealNext(i + 1), 160));
+        }
+      };
+      tick();
+    };
+    revealNext(0);
+  }
+
   function debugFlow(label, data = {}) {
     try {
       console.debug(`[Hatch flow] ${label}`, JSON.parse(JSON.stringify(data)));
@@ -466,7 +548,10 @@ window.SkillNestApp = (() => {
 
     const processingBrief = processingProjectBrief(prompt.value, files);
     localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(processingBrief));
-    saveAssistantMessages(assistantMessageEntries("I’m reading through your project..."));
+    // Fresh conversation: clear the thread so only the thinking bubble shows,
+    // and reset the typing watermark so the first reply types in.
+    resetAssistantTyping();
+    saveAssistantMessages([]);
     setRoute("task-review");
 
     window.setTimeout(async () => {
@@ -477,6 +562,7 @@ window.SkillNestApp = (() => {
       });
       if (!brief.ok) {
         localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(invalidProjectBrief(prompt.value)));
+        setAssistantThinking(false);
         saveAssistantMessages(assistantMessageEntries("Tell me what you need done, who it is for, and what a good result would look like."));
         render();
         return;
@@ -486,6 +572,7 @@ window.SkillNestApp = (() => {
       const assistantText = firstRunMessage(brief);
       const nextBrief = attachNextTurn(applyFinalReviewState(brief, assistantText));
       localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
+      setAssistantThinking(false);
       saveAssistantMessages(assistantMessageEntries(nextBrief.assistantMessage || assistantText));
       render();
     }, 420);
@@ -1912,6 +1999,9 @@ window.SkillNestApp = (() => {
     const brief = getGeneratedBrief();
     if (!brief?.ok || !answer) return;
 
+    setAssistantThinking(true);
+    render();
+
     const nextBrief = await requestProjectIntake({
       mode: "clarify",
       brief,
@@ -1920,6 +2010,7 @@ window.SkillNestApp = (() => {
     });
 
     localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
+    setAssistantThinking(false);
     render();
   }
 
@@ -1942,6 +2033,12 @@ window.SkillNestApp = (() => {
       await handleAssistantTurn(answer);
     } finally {
       assistantTurnInFlight = false;
+      // Safety net: if the turn threw mid-flight, don't leave the thinking
+      // bubble spinning forever.
+      if (localStorage.getItem("hatchAssistantThinking") === "true") {
+        setAssistantThinking(false);
+        render();
+      }
     }
   }
 
@@ -1989,8 +2086,9 @@ window.SkillNestApp = (() => {
     });
 
     if (!brief.isValidProject || brief.stage === "invalid_input" || Number(brief.confidence || 0) < 40) {
-      const pendingMessages = [...existingMessages, { role: "user", text: answer }, ...assistantMessageEntries("I’ll take a closer look and shape this into a Hatch.")];
-      saveAssistantMessages(pendingMessages);
+      // Show the user's message + an animated thinking bubble (no placeholder text).
+      saveAssistantMessages([...existingMessages, { role: "user", text: answer }]);
+      setAssistantThinking(true);
       render();
 
       const shapedBrief = await requestProjectIntake({
@@ -2005,18 +2103,19 @@ window.SkillNestApp = (() => {
       const assistantText = turnBrief.assistantMessage || C.fallbackAssistantMessage(turnBrief);
       mergeInferredProgress(turnBrief);
       localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(turnBrief));
+      setAssistantThinking(false);
       saveAssistantMessages([...existingMessages, { role: "user", text: answer }, ...assistantMessageEntries(assistantText)]);
       render();
       return;
     }
 
-    const pendingMessages = [...existingMessages, { role: "user", text: answer }, ...assistantMessageEntries("That helps. I’m updating the brief...")];
     localStorage.setItem("skillnestGeneratedBrief", JSON.stringify({
       ...brief,
       nextQuestion: { key: "loading", prompt: "", suggestions: [], placeholder: "" },
       activeQuestion: "",
     }));
-    saveAssistantMessages(pendingMessages);
+    saveAssistantMessages([...existingMessages, { role: "user", text: answer }]);
+    setAssistantThinking(true);
     render();
 
     let result = await requestProjectAssistant({
@@ -2155,6 +2254,7 @@ window.SkillNestApp = (() => {
       activeTurn: nextBrief.currentTurn || null,
     });
     localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
+    setAssistantThinking(false);
     saveAssistantMessages([...existingMessages, { role: "user", text: answer }, ...assistantMessageEntries(nextBrief.assistantMessage || assistantText)]);
     if (nextBrief.stage === "ready_to_post") {
       render();
@@ -3087,6 +3187,8 @@ window.SkillNestApp = (() => {
     localStorage.removeItem("hatchShowFinalEditSections");
     localStorage.removeItem("hatchReturnToFinalReview");
     localStorage.removeItem("hatchFinalReviewDismissed");
+    localStorage.removeItem("hatchTypedCount");
+    localStorage.removeItem("hatchAssistantThinking");
     if (options.redirect !== false) setRoute("home");
   }
 
@@ -3941,7 +4043,8 @@ window.SkillNestApp = (() => {
     if (currentRoute() !== "task-review") return;
     const thread = document.getElementById("assistantThread");
     if (thread) thread.scrollTop = thread.scrollHeight;
-    document.getElementById("assistantReply")?.scrollIntoView({ block: "nearest" });
+    const reply = document.getElementById("assistantReply");
+    if (reply && typeof reply.scrollIntoView === "function") reply.scrollIntoView({ block: "nearest" });
   }
 
   function render() {
@@ -3988,6 +4091,7 @@ window.SkillNestApp = (() => {
       syncMissionCardStates();
       renderFilePreviews();
       scrollAssistantToLatest();
+      animateAssistantTyping();
       if (route === "browse") applyTaskFilters();
     });
   }
