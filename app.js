@@ -119,8 +119,15 @@ window.SkillNestApp = (() => {
     return readJson("skillnestPostedTasks", []);
   }
 
+  // A data: URL is self-contained and durable (survives reload, can be sent
+  // to the backend) — pass those through untouched. Only legacy blob:-URL
+  // entries (from before files were read as data URLs) need re-mapping
+  // through the session-scoped Map, and only for as long as that Map still
+  // holds them; once the tab reloads, those blob: URLs are dead and get
+  // correctly stripped so the UI shows "unavailable" instead of a broken link.
   function hydrateSessionFiles(files = []) {
     return files.map((file) => {
+      if (String(file.objectUrl || "").startsWith("data:")) return file;
       const key = file.sessionId || `${file.name || "file"}-${file.size || 0}`;
       const { objectUrl, ...metadata } = file;
       return fileObjectUrls.has(key) ? { ...metadata, objectUrl: fileObjectUrls.get(key) } : metadata;
@@ -167,12 +174,25 @@ window.SkillNestApp = (() => {
     return localStorage.getItem("skillnestLoggedIn") === "true" && Boolean(account.username && account.name && account.email);
   }
 
+  // localStorage has a hard quota (~5-10MB, shared across this whole app).
+  // Now that attached files carry real base64 content instead of a tiny
+  // blob-URL pointer, a write can legitimately fail — catch that instead of
+  // letting a QuotaExceededError abort the caller mid-flow.
+  function trySetLocalStorage(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function saveListItem(key, item, matchKey = "title") {
     const list = readJson(key, []);
     const index = list.findIndex((existing) => existing[matchKey] === item[matchKey]);
     if (index >= 0) list[index] = { ...list[index], ...item };
     else list.unshift(item);
-    localStorage.setItem(key, JSON.stringify(list));
+    return trySetLocalStorage(key, list);
   }
 
   function saveDraftTask() {
@@ -2968,32 +2988,70 @@ window.SkillNestApp = (() => {
     useExampleTask();
   }
 
-  function handleTaskFiles(event) {
-    const existing = readJson("skillnestDraftFiles", []);
+  // MAX_DRAFT_FILE_BYTES caps each attached file so it fits safely in
+  // localStorage (shared across the whole app, ~5-10MB quota) and in the
+  // request that eventually submits the Hatch. This is a local demo backend
+  // with no real object storage — files live as base64 data URLs, not as
+  // uploads to cloud storage.
+  const MAX_DRAFT_FILE_BYTES = 3 * 1024 * 1024;
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error(`Could not read "${file.name}".`));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleTaskFiles(event) {
+    const input = event.target;
+    const chosen = [...(input.files || [])];
+    if (!chosen.length) return;
+
+    const oversized = chosen.filter((file) => file.size > MAX_DRAFT_FILE_BYTES);
+    const accepted = chosen.filter((file) => file.size <= MAX_DRAFT_FILE_BYTES);
+    if (oversized.length) {
+      window.alert(`${oversized.length === 1 ? "This file is" : "These files are"} over 3 MB and can't be attached: ${oversized.map((file) => file.name).join(", ")}.`);
+    }
+    if (!accepted.length) {
+      input.value = "";
+      return;
+    }
+
     const materialType = localStorage.getItem("hatchPendingFileMaterial") || "Other material";
-    const files = [...event.target.files].map((file) => {
-      const sessionId = `file-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const objectUrl = URL.createObjectURL(file);
-      // MVP note: object URLs are session-only. Production needs backend/object storage.
-      fileObjectUrls.set(sessionId, objectUrl);
-      return {
+    let readFiles;
+    try {
+      // objectUrl carries a real, durable data: URL now (not a session-only
+      // blob: pointer) — the field name is kept so every existing preview/
+      // download/marketplace code path that reads file.objectUrl needs no changes.
+      readFiles = await Promise.all(accepted.map(async (file) => ({
         name: file.name,
         type: file.type || "file",
         size: file.size || 0,
         materialType,
-        sessionId,
-        objectUrl,
-      };
-    });
-    const nextFiles = [...existing, ...files];
-    localStorage.setItem("skillnestDraftFiles", JSON.stringify(nextFiles));
+        objectUrl: await readFileAsDataUrl(file),
+      })));
+    } catch (error) {
+      window.alert(error.message || "One of those files could not be read. Please try again.");
+      input.value = "";
+      return;
+    }
+
+    const existing = readJson("skillnestDraftFiles", []);
+    const nextFiles = [...existing, ...readFiles];
+    if (!trySetLocalStorage("skillnestDraftFiles", nextFiles)) {
+      window.alert("These files are too large to attach together. Try removing one or attaching fewer at a time.");
+      input.value = "";
+      return;
+    }
     localStorage.removeItem("hatchPendingFileMaterial");
     const summary = document.getElementById("fileSummary");
     if (summary) {
       summary.textContent = nextFiles.length ? `${nextFiles.length} file${nextFiles.length === 1 ? "" : "s"} attached for preview.` : "";
       summary.classList.toggle("show", nextFiles.length > 0);
     }
-    event.target.value = "";
+    input.value = "";
     syncFilesIntoBrief(nextFiles);
     renderFilePreviews();
     updateLiveTaskPreview();
@@ -3011,7 +3069,7 @@ window.SkillNestApp = (() => {
     const files = readJson("skillnestDraftFiles", []);
     const removed = files[index];
     const url = removed?.sessionId ? fileObjectUrls.get(removed.sessionId) : removed?.objectUrl;
-    if (url) URL.revokeObjectURL(url);
+    if (url && url.startsWith("blob:")) URL.revokeObjectURL(url); // data: URLs need no revocation
     if (removed?.sessionId) fileObjectUrls.delete(removed.sessionId);
     files.splice(index, 1);
     localStorage.setItem("skillnestDraftFiles", JSON.stringify(files));
@@ -3136,11 +3194,15 @@ window.SkillNestApp = (() => {
     }
 
     const postedTask = reviewedBriefToPostedTask(brief);
-    saveListItem("skillnestPostedTasks", postedTask, "id");
-    // Mirror to the backend so it exists server-side (admin can manage it and
-    // lifecycle updates reach inboxes). Files stay local: they hold blob URLs.
+    if (!saveListItem("skillnestPostedTasks", postedTask, "id")) {
+      window.alert("The attached files are too large to submit together. Remove one and try again.");
+      return;
+    }
+    // Mirror to the backend so it exists server-side (admin can manage it,
+    // lifecycle updates reach inboxes, and the attached files are actually
+    // stored — not just held in this browser tab).
     if (backendToken()) {
-      backendFetch("/api/hatches", { method: "POST", body: { ...postedTask, files: [] } }).then((result) => {
+      backendFetch("/api/hatches", { method: "POST", body: postedTask }).then((result) => {
         if (!result?.ok) return;
         saveListItem("skillnestPostedTasks", { ...postedTask, backendId: result.hatch.id }, "id");
       });

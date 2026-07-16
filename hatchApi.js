@@ -59,8 +59,9 @@ function readBody(req) {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      // Generous enough for a base64 resume attachment on applications.
-      if (body.length > 6_000_000) {
+      // Generous enough for a base64 resume attachment, or several base64
+      // reference files/images on a posted Hatch (see MAX_HATCH_FILE_CHARS).
+      if (body.length > 20_000_000) {
         req.destroy();
         reject(new Error("Request body too large"));
       }
@@ -83,6 +84,28 @@ async function readJsonBody(req) {
 function asStringList(value) {
   if (!Array.isArray(value)) return [];
   return value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim());
+}
+
+// Same backstop as the hatcher-application resume field (see resumeData
+// below): only keep entries that look like a real data: URL under a sane
+// size, so a malformed or oversized client payload can't bloat the row.
+const MAX_HATCH_FILE_CHARS = 5_000_000; // ~3.7MB raw before base64 overhead
+function sanitizeHatchFiles(rawFiles) {
+  if (!Array.isArray(rawFiles)) return [];
+  return rawFiles
+    .filter((file) => file && typeof file === "object")
+    .slice(0, 12)
+    .map((file) => {
+      const objectUrl = String(file.objectUrl || "");
+      const validUrl = /^data:/.test(objectUrl) && objectUrl.length <= MAX_HATCH_FILE_CHARS;
+      return {
+        name: String(file.name || "file").slice(0, 200),
+        type: String(file.type || "file").slice(0, 100),
+        size: Number(file.size) || 0,
+        materialType: String(file.materialType || "Other material").slice(0, 100),
+        objectUrl: validUrl ? objectUrl : "",
+      };
+    });
 }
 
 function parseJsonColumn(text) {
@@ -409,7 +432,7 @@ async function handleCreateHatch(req, res) {
     JSON.stringify(asStringList(body.references)),
     JSON.stringify(asStringList(body.constraints)),
     JSON.stringify(asStringList(body.missingInfo)),
-    JSON.stringify(Array.isArray(body.files) ? body.files.slice(0, 20) : []),
+    JSON.stringify(sanitizeHatchFiles(body.files)),
     user.id,
     stamp,
     stamp
