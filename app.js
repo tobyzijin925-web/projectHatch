@@ -3476,6 +3476,74 @@ window.SkillNestApp = (() => {
     return values;
   }
 
+  // Snapshots what the focus step currently holds so a re-render (e.g. after
+  // attaching a resume) doesn't wipe the other fields the applicant filled in.
+  function captureFocusDraft(baseDraft = getOperatorWizard().draft) {
+    const form = document.querySelector(".operator-focus-form");
+    if (!form) return baseDraft;
+    return {
+      ...baseDraft,
+      industries: collectChoices(form, "industries"),
+      exampleTasks: collectChoices(form, "exampleTasks"),
+      linkedin: document.getElementById("operatorLinkedin")?.value.trim() ?? baseDraft.linkedin ?? "",
+    };
+  }
+
+  // Rebuilds the wizard draft from a submitted application and jumps straight
+  // into it — so "Update application" resumes with everything pre-filled
+  // instead of starting a blank re-application.
+  function updateHatcherApplication() {
+    const account = getAccount();
+    const application = getOperatorApplications()[0];
+    const splitList = (value) => String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+    const draft = application
+      ? {
+        name: application.name || account.name || "",
+        background: splitList(application.background),
+        tools: splitList(application.tools),
+        industries: splitList(application.industries),
+        exampleTasks: splitList(application.exampleTasks),
+        linkedin: application.linkedin || "",
+        resumeName: application.resumeName || "",
+        resumeData: application.resumeData || "",
+      }
+      : { name: account.name || "" };
+    // Logged-in applicants already have an account, so skip that step.
+    saveOperatorWizard(isLoggedIn() ? "about" : "account", draft);
+    setRoute("operator");
+  }
+
+  function attachResume(event) {
+    const input = event.currentTarget;
+    const file = input.files && input.files[0];
+    if (!file) return;
+    // 2 MB keeps the data URL within the localStorage budget and the backend
+    // body limit once base64-expanded.
+    if (file.size > 2 * 1024 * 1024) {
+      window.alert("That resume is over 2 MB. Please choose a smaller file.");
+      input.value = "";
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const draft = captureFocusDraft();
+      draft.resumeName = file.name;
+      draft.resumeData = String(reader.result || "");
+      saveOperatorWizard("focus", draft);
+      render();
+    };
+    reader.onerror = () => window.alert("That resume could not be read. Please try another file.");
+    reader.readAsDataURL(file);
+  }
+
+  function removeResume() {
+    const draft = captureFocusDraft();
+    delete draft.resumeName;
+    delete draft.resumeData;
+    saveOperatorWizard("focus", draft);
+    render();
+  }
+
   function operatorAccountStep(event) {
     event.preventDefault();
     const email = document.getElementById("operatorAuthEmail").value.trim();
@@ -3542,6 +3610,7 @@ window.SkillNestApp = (() => {
         ...draft,
         industries: collectChoices(form, "industries"),
         exampleTasks: collectChoices(form, "exampleTasks"),
+        linkedin: document.getElementById("operatorLinkedin")?.value.trim() ?? draft.linkedin ?? "",
       });
     } else {
       saveOperatorWizard("account", {
@@ -3567,22 +3636,31 @@ window.SkillNestApp = (() => {
       tools: (draft.tools || []).join(", "),
       industries: collectChoices(form, "industries").join(", "),
       exampleTasks: collectChoices(form, "exampleTasks").join(", "),
+      linkedin: document.getElementById("operatorLinkedin")?.value.trim() || draft.linkedin || "",
+      resumeName: draft.resumeName || "",
+      resumeData: draft.resumeData || "",
       status: "Submitted",
       submittedAt: new Date().toISOString(),
     };
     if (draft.name && !account.name) {
       localStorage.setItem("skillnestAccount", JSON.stringify({ ...account, name: draft.name }));
     }
-    saveListItem("skillnestOperatorApplications", application, "id");
+    // One current application per person (the backend enforces the same), so an
+    // update replaces the stored row rather than stacking a new one. Carry the
+    // backend id over so refreshes keep tracking the same server record.
+    const previous = getOperatorApplications()[0];
+    if (previous?.backendId) application.backendId = previous.backendId;
+    localStorage.setItem("skillnestOperatorApplications", JSON.stringify([application]));
     // Mirror to the backend queue so the admin can approve or reject it.
     if (backendToken()) {
       backendFetch("/api/hatcher-applications", { method: "POST", body: application }).then((result) => {
         if (!result?.ok) return;
-        saveListItem("skillnestOperatorApplications", {
+        localStorage.setItem("skillnestOperatorApplications", JSON.stringify([{
           ...application,
           backendId: result.application.id,
           status: "Pending review",
-        }, "id");
+        }]));
+        render();
       });
     }
     saveOperatorWizard("done", {});
@@ -3602,9 +3680,15 @@ window.SkillNestApp = (() => {
       const remote = data.applications.find((item) => item.id === application.backendId)
         || data.applications[0];
       const label = statusLabel[remote.status] || application.status;
-      if (application.status !== label || application.reviewNote !== remote.reviewNote) {
+      // Prefer whatever the applicant attached locally, but fall back to the
+      // server copy so an update made elsewhere still shows here.
+      const linkedin = application.linkedin || remote.linkedin || "";
+      const resumeName = application.resumeName || remote.resumeName || "";
+      const resumeData = application.resumeData || remote.resumeData || "";
+      if (application.status !== label || application.reviewNote !== remote.reviewNote
+        || application.linkedin !== linkedin || application.resumeName !== resumeName) {
         changed = true;
-        return { ...application, backendId: remote.id, status: label, reviewNote: remote.reviewNote || "" };
+        return { ...application, backendId: remote.id, status: label, reviewNote: remote.reviewNote || "", linkedin, resumeName, resumeData };
       }
       return application;
     });
@@ -3935,6 +4019,9 @@ window.SkillNestApp = (() => {
     operatorGoogleSignup,
     operatorStepBack,
     operatorStepNext,
+    updateHatcherApplication,
+    attachResume,
+    removeResume,
     openOperatorProfile,
     openTaskDetail,
     openVerifiedHatcherProfile,

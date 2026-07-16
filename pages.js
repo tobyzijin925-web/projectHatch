@@ -330,11 +330,26 @@ window.SkillNestPages = (() => {
   }
 
   function operatorFocusStep(draft) {
+    const resumeName = draft.resumeName || "";
     return `
-      <form class="form-card" onsubmit="SkillNestApp.submitOperator(event)">
+      <form class="form-card operator-focus-form" onsubmit="SkillNestApp.submitOperator(event)">
         <div class="form-grid single-column">
           ${C.choiceField("Industries you understand", "industries", ["Restaurants", "E-commerce", "Local Services", "Real Estate", "Education", "Health & wellness"], "Other industry", draft.industries || [])}
           ${C.choiceField("Example Hatches you can complete", "exampleTasks", ["Social posts", "Product descriptions", "Simple websites", "Customer reply templates", "Menus/flyers", "Spreadsheet cleanup"], "Other Hatches", draft.exampleTasks || [])}
+          <label class="field full-field">
+            <span>LinkedIn profile <span class="field-optional">(optional)</span></span>
+            <input id="operatorLinkedin" type="url" placeholder="https://www.linkedin.com/in/you" value="${C.escapeHtml(draft.linkedin || "")}" />
+          </label>
+          <div class="field full-field">
+            <span class="field-label">Resume <span class="field-optional">(optional &middot; PDF or Word, under 2&nbsp;MB)</span></span>
+            <div class="resume-upload">
+              <input id="operatorResume" class="hidden-file" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="SkillNestApp.attachResume(event)" />
+              <button class="btn secondary small" type="button" onclick="document.getElementById('operatorResume').click()">${resumeName ? "Replace resume" : "Upload resume"}</button>
+              ${resumeName
+                ? `<span class="resume-chip">${C.escapeHtml(resumeName)} <button type="button" class="remove-choice" onclick="SkillNestApp.removeResume()">x</button></span>`
+                : `<span class="muted-text">No file chosen</span>`}
+            </div>
+          </div>
         </div>
         <div class="wizard-actions">
           <button class="btn secondary" type="button" onclick="SkillNestApp.operatorStepBack(event)">Back</button>
@@ -481,7 +496,7 @@ window.SkillNestPages = (() => {
           <section class="profile-card wide">
             <div class="card-title-row">
               <h2>Hatcher application</h2>
-              <button class="btn secondary small" type="button" onclick="SkillNestApp.setRoute('operator')">Update application</button>
+              <button class="btn secondary small" type="button" onclick="SkillNestApp.updateHatcherApplication()">${operatorApplications.length ? "Update application" : "Apply"}</button>
             </div>
             ${operatorApplicationSummary(operatorApplications)}
           </section>
@@ -530,6 +545,12 @@ window.SkillNestPages = (() => {
                 <div>
                   <h3>${C.escapeHtml(application.name || application.username)} <span class="inbox-meta">@${C.escapeHtml(application.username)} &middot; ${C.escapeHtml(application.email)}</span></h3>
                   <p>${C.escapeHtml([application.background, application.tools, application.industries, application.exampleTasks].filter(Boolean).join(" · ") || "No details provided.")}</p>
+                  ${(application.linkedin || application.resumeName) ? `<p class="application-links">
+                    ${application.linkedin ? `<a href="${C.escapeHtml(application.linkedin)}" target="_blank" rel="noopener noreferrer">LinkedIn profile</a>` : ""}
+                    ${application.resumeName ? (application.resumeData
+                      ? `<a href="${C.escapeHtml(application.resumeData)}" download="${C.escapeHtml(application.resumeName)}">Resume: ${C.escapeHtml(application.resumeName)}</a>`
+                      : `<span>Resume: ${C.escapeHtml(application.resumeName)}</span>`) : ""}
+                  </p>` : ""}
                   <input class="admin-note-input" id="adminAppNote-${Number(application.id)}" type="text" placeholder="Optional message for the applicant's inbox" />
                 </div>
                 <div class="mission-actions">
@@ -577,6 +598,14 @@ window.SkillNestPages = (() => {
     if (!applications.length) return `<p class="muted-text">Your Hatcher application summary will appear here after you apply.</p>`;
     const application = applications[0];
     const row = (label, value) => `<div><dt>${label}</dt><dd>${C.escapeHtml(value || "-")}</dd></div>`;
+    const linkedinRow = application.linkedin
+      ? `<div><dt>LinkedIn</dt><dd><a href="${C.escapeHtml(application.linkedin)}" target="_blank" rel="noopener noreferrer">${C.escapeHtml(application.linkedin)}</a></dd></div>`
+      : "";
+    const resumeRow = application.resumeName
+      ? `<div><dt>Resume</dt><dd>${application.resumeData
+          ? `<a href="${C.escapeHtml(application.resumeData)}" download="${C.escapeHtml(application.resumeName)}">${C.escapeHtml(application.resumeName)}</a>`
+          : C.escapeHtml(application.resumeName)}</dd></div>`
+      : "";
     return `
       <dl class="application-summary">
         ${row("Status", application.status)}
@@ -587,6 +616,8 @@ window.SkillNestPages = (() => {
         ${row("Tools", application.tools)}
         ${row("Categories", application.industries)}
         ${row("Example Hatches", application.exampleTasks)}
+        ${linkedinRow}
+        ${resumeRow}
       </dl>
     `;
   }

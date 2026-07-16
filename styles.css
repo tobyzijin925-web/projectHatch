@@ -4223,3 +4223,61 @@ html.dark-mode .btn.secondary:hover {
 .admin-message-form button {
   justify-self: start;
 }
+
+/* ── Hatcher application: LinkedIn + resume ─────────────────────────── */
+
+.field-optional {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.operator-focus-form .field-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 800;
+}
+
+.resume-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.resume-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.resume-chip .remove-choice {
+  cursor: pointer;
+  font-weight: 900;
+  opacity: 0.7;
+}
+
+.resume-chip .remove-choice:hover {
+  opacity: 1;
+}
+
+.application-summary a,
+.application-links a {
+  color: var(--accent-dark);
+  font-weight: 700;
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.application-links {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 8px !important;
+}

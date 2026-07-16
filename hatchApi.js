@@ -59,7 +59,8 @@ function readBody(req) {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 1_000_000) {
+      // Generous enough for a base64 resume attachment on applications.
+      if (body.length > 6_000_000) {
         req.destroy();
         reject(new Error("Request body too large"));
       }
@@ -252,6 +253,9 @@ function toClientApplication(row) {
     exampleTasks: row.example_tasks,
     status: row.status,
     reviewNote: row.review_note,
+    linkedin: row.linkedin || "",
+    resumeName: row.resume_name || "",
+    resumeData: row.resume_data || "",
     submittedAt: row.created_at,
     reviewedAt: row.reviewed_at,
   };
@@ -715,6 +719,13 @@ async function handleSubmitApplication(req, res) {
   const body = await readJsonBody(req);
   const text = (value) => String(value || "").trim();
 
+  // Only keep a resume that looks like a data URL, and cap it so a huge upload
+  // can't bloat the row. The client caps too; this is the server-side backstop.
+  const resumeData = String(body.resumeData || "");
+  const resume = /^data:/.test(resumeData) && resumeData.length <= 5_000_000 ? resumeData : "";
+  const resumeName = resume ? text(body.resumeName) : "";
+  const linkedin = text(body.linkedin);
+
   // One live application per user: a resubmit replaces their pending row so
   // the admin queue never shows duplicates.
   const stamp = nowIso();
@@ -725,17 +736,19 @@ async function handleSubmitApplication(req, res) {
     if (pending) {
       db.prepare(`
         UPDATE hatcher_applications
-        SET name = ?, email = ?, background = ?, tools = ?, industries = ?, example_tasks = ?, created_at = ?
+        SET name = ?, email = ?, background = ?, tools = ?, industries = ?, example_tasks = ?,
+            linkedin = ?, resume_name = ?, resume_data = ?, created_at = ?
         WHERE id = ?
       `).run(text(body.name) || user.name, user.email, text(body.background), text(body.tools),
-        text(body.industries), text(body.exampleTasks), stamp, pending.id);
+        text(body.industries), text(body.exampleTasks), linkedin, resumeName, resume, stamp, pending.id);
       return pending.id;
     }
     const inserted = db.prepare(`
-      INSERT INTO hatcher_applications (user_id, name, email, background, tools, industries, example_tasks, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO hatcher_applications
+        (user_id, name, email, background, tools, industries, example_tasks, linkedin, resume_name, resume_data, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(user.id, text(body.name) || user.name, user.email, text(body.background), text(body.tools),
-      text(body.industries), text(body.exampleTasks), stamp);
+      text(body.industries), text(body.exampleTasks), linkedin, resumeName, resume, stamp);
     return Number(inserted.lastInsertRowid);
   });
 

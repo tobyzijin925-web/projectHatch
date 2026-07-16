@@ -114,6 +114,9 @@ db.exec(`
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
     review_note TEXT,
     reviewed_by INTEGER REFERENCES users(id),
+    linkedin TEXT NOT NULL DEFAULT '',
+    resume_name TEXT NOT NULL DEFAULT '',
+    resume_data TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     reviewed_at TEXT
   );
@@ -184,6 +187,19 @@ db.exec(`
     SELECT RAISE(ABORT, 'invalid hatch state transition');
   END;
 `);
+
+// Adds columns to tables created by an earlier version of this file.
+// CREATE TABLE IF NOT EXISTS won't alter an existing table, so bring older
+// databases up to the current shape here. Each add is guarded so it's a no-op
+// once applied.
+function addColumnIfMissing(table, column, definition) {
+  const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((col) => col.name === column);
+  if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+addColumnIfMissing("hatcher_applications", "linkedin", "TEXT NOT NULL DEFAULT ''");
+addColumnIfMissing("hatcher_applications", "resume_name", "TEXT NOT NULL DEFAULT ''");
+addColumnIfMissing("hatcher_applications", "resume_data", "TEXT NOT NULL DEFAULT ''");
 
 function transact(fn) {
   db.exec("BEGIN IMMEDIATE");
