@@ -207,6 +207,20 @@ window.SkillNestApp = (() => {
     return splitAssistantText(text).map((chunk) => ({ role: "assistant", text: chunk }));
   }
 
+  // The full text of the most recent assistant turn. Since one reply is split
+  // into several sentence bubbles, the LAST bubble alone is a poor fingerprint
+  // for duplicate detection — a verbatim repeat of a multi-sentence reply only
+  // matches when compared whole. So join all consecutive trailing assistant
+  // bubbles back into one string.
+  function lastAssistantTurnText(messages = []) {
+    const trailing = [];
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i]?.role === "assistant") trailing.unshift(messages[i].text || "");
+      else break;
+    }
+    return trailing.join(" ").trim();
+  }
+
   // ── Assistant "thinking" + real-time typing ────────────────────────────────
   // The thinking flag drives the animated dots bubble while a turn is in flight.
   // The typing watermark (hatchTypedCount) records how many messages have already
@@ -2200,7 +2214,7 @@ window.SkillNestApp = (() => {
       }
     }
     let nextBrief = attachNextTurn(applyFinalReviewState(normalizedBrief, assistantText));
-    const lastStoredAssistantText = [...existingMessages].reverse().find((message) => message.role === "assistant")?.text || "";
+    const lastStoredAssistantText = lastAssistantTurnText(existingMessages);
     const finalAssistantText = nextBrief.assistantMessage || assistantText;
     if (answeredCurrentTurn && isDuplicateAssistantMessage(lastStoredAssistantText, finalAssistantText)) {
       duplicateBlocked = true;
@@ -2390,7 +2404,7 @@ window.SkillNestApp = (() => {
   function conversationState(brief = {}, messages = [], latestAnswer = "") {
     const activeSection = sectionIdFromUpdateKey(brief.activeSection || brief.nextQuestion?.key || activeSectionId());
     const activeQuestion = brief.activeQuestion || brief.nextQuestion?.prompt || "";
-    const previousAssistantMessage = [...messages].reverse().find((message) => message.role === "assistant")?.text || "";
+    const previousAssistantMessage = lastAssistantTurnText(messages);
     const expectedAnswerType = expectedTypeFromQuestion(
       activeQuestion,
       brief.expectedAnswerType || assistantKeyForSection(activeSection),
