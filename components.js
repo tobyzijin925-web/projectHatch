@@ -1,6 +1,12 @@
 window.SkillNestComponents = (() => {
   const { taskChips, operators, hatchedWork, completedHatches, hatcherProfiles } = window.SkillNestData;
 
+  // The assistant's display name in the chat UI. Change this one value to
+  // rename it everywhere it appears to users. (The matching name inside the AI
+  // instructions is ASSISTANT_NAME in server.js — update both to keep them in
+  // sync.)
+  const ASSISTANT_LABEL = "Chickie";
+
   function escapeHtml(value = "") {
     return String(value)
       .replaceAll("&", "&amp;")
@@ -1162,14 +1168,14 @@ window.SkillNestComponents = (() => {
         <div class="assistant-thread" id="assistantThread">
           ${threadMessages.map((message, index) => `
             <article class="assistant-message ${message.role}" data-msg-index="${index}">
-              <span>${message.role === "assistant" ? "Hatch Assistant" : "You"}</span>
+              <span>${message.role === "assistant" ? escapeHtml(ASSISTANT_LABEL) : "You"}</span>
               <p>${escapeHtml(message.text)}</p>
             </article>
           `).join("")}
           ${thinking ? `
             <article class="thinking-bubble assistant" aria-live="polite">
-              <span>Hatch Assistant</span>
-              <div class="thinking-dots" role="status" aria-label="Hatch is thinking">
+              <span>${escapeHtml(ASSISTANT_LABEL)}</span>
+              <div class="thinking-dots" role="status" aria-label="${escapeHtml(ASSISTANT_LABEL)} is thinking">
                 <span></span><span></span><span></span>
               </div>
             </article>
