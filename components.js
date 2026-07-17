@@ -1277,9 +1277,12 @@ window.SkillNestComponents = (() => {
   }
 
   function nav(active, isLoggedIn, account) {
+    // Notion-style split: logo + links grouped on the left, quiet "Log in"
+    // link plus one solid CTA on the right.
     const accountCta = isLoggedIn
       ? `<button class="btn secondary nav-cta" type="button" onclick="SkillNestApp.setRoute('profile')">${escapeHtml(account.username || "My Hatches")}</button>`
-      : `<button class="btn secondary nav-cta" type="button" onclick="SkillNestApp.setRoute('auth')">Sign up / Log in</button>`;
+      : `<a class="nav-login" href="#auth">Log in</a>
+         <button class="btn primary nav-cta" type="button" onclick="SkillNestApp.setRoute('signup')">Get Hatch free</button>`;
 
     // Existing Hatchers (signed in with a Hatcher/Operator role) see a "leveling
     // up" link to the levels/ranking guide; everyone else gets the "Become a
@@ -1292,14 +1295,16 @@ window.SkillNestComponents = (() => {
     return `
       <header class="topbar">
         <nav class="nav" aria-label="Primary navigation">
-          <a class="brand" href="#home" aria-label="Hatch home">
-            <img class="brand-logo" src="${document.documentElement.classList.contains("dark-mode") ? "assets/hatchlogo-dark.png" : "assets/hatchlogo.png"}?v=2" alt="Hatch logo" />
-          </a>
-          <div class="nav-links">
-            <a href="#browse" class="${active === "browse" ? "active" : ""}">Hatches</a>
-            <a href="#verified-work" class="${active === "verified-work" ? "active" : ""}">Verified Results</a>
-            ${hatcherLink}
-            <a href="#trust" class="secondary-link ${active === "trust" ? "active" : ""}">Trust</a>
+          <div class="nav-left">
+            <a class="brand" href="#home" aria-label="Hatch home">
+              <img class="brand-logo" src="${document.documentElement.classList.contains("dark-mode") ? "assets/hatchlogo-dark.png" : "assets/hatchlogo.png"}?v=2" alt="Hatch logo" />
+            </a>
+            <div class="nav-links">
+              <a href="#browse" class="${active === "browse" ? "active" : ""}">Hatches</a>
+              <a href="#verified-work" class="${active === "verified-work" ? "active" : ""}">Verified Results</a>
+              ${hatcherLink}
+              <a href="#trust" class="secondary-link ${active === "trust" ? "active" : ""}">Trust</a>
+            </div>
           </div>
           <div class="nav-actions">
             ${accountCta}
@@ -1329,6 +1334,10 @@ window.SkillNestComponents = (() => {
         <div class="hero-inner">
           <div class="hero-copy reveal">
             <h1>What do you need help with?</h1>
+            <button class="hero-typewriter" type="button" aria-label="Focus the project description box" onclick="document.getElementById('taskPrompt')?.focus()">
+              <span class="typewriter-prefix">I need help with</span>
+              <span class="typewriter-pill"><span id="heroTypewriter"></span><span class="typewriter-caret" aria-hidden="true"></span></span>
+            </button>
             <p class="hero-subtitle">Tell us everything.<br />Don’t worry about making it perfect.<br />Just explain your situation naturally, as if you were talking to a colleague.<br />The more context you give us, the better we can understand your project. Hatch will organize everything for you.</p>
           </div>
           <div class="task-box reveal">
@@ -1360,6 +1369,53 @@ window.SkillNestComponents = (() => {
               <span>References</span>
             </div>
           </div>
+        </div>
+      </section>
+    `;
+  }
+
+  function whyHatchSection() {
+    const rows = [
+      ["Describing the work", "Write the perfect brief yourself, or get ignored", "Just talk naturally — AI turns it into a complete brief"],
+      ["Finding the right person", "Scroll hundreds of near-identical gigs and reviews", "Matched to a verified Hatcher who fits the project"],
+      ["Speed", "Days of back-and-forth before work even starts", "AI-assisted scoping means work starts in hours, not days"],
+      ["Pricing", "Race-to-the-bottom bidding on hourly rates", "Fair prices tied to outcomes and verified results"],
+    ];
+
+    return `
+      <section class="section why-section">
+        <div class="section-head centered-head">
+          <div>
+            <div class="section-label">Why Hatch</div>
+            <h2>Not another gig marketplace.</h2>
+            <p class="section-subtitle">Fiverr and similar platforms make you do the hard part: writing the brief, vetting strangers, and waiting. Hatch puts AI in the middle of every project, so both sides win.</p>
+          </div>
+        </div>
+        <div class="compare-card reveal">
+          <div class="compare-row compare-head">
+            <span></span>
+            <span>Traditional marketplaces</span>
+            <span class="compare-hatch-col">Hatch</span>
+          </div>
+          ${rows.map(([label, them, us]) => `
+            <div class="compare-row">
+              <span class="compare-label">${label}</span>
+              <span class="compare-them">${them}</span>
+              <span class="compare-us">✓ ${us}</span>
+            </div>
+          `).join("")}
+        </div>
+        <div class="audience-grid">
+          <article class="audience-card reveal">
+            <div class="stage-icon" aria-hidden="true">🎓</div>
+            <h3>For students &amp; freelancers</h3>
+            <p>Your AI skills are worth more than $5 gigs. With AI handling the busywork, you deliver more projects, faster — and build verified results that let you level up and charge what the outcome is worth.</p>
+          </article>
+          <article class="audience-card reveal">
+            <div class="stage-icon" aria-hidden="true">🏪</div>
+            <h3>For small businesses</h3>
+            <p>No more guessing what to write in a job post. Describe your problem in plain words, and AI shapes it into a brief a verified Hatcher can act on immediately — real help, faster than any gig site.</p>
+          </article>
         </div>
       </section>
     `;
@@ -1904,6 +1960,7 @@ window.SkillNestComponents = (() => {
     generateTaskBrief,
     hero,
     hatchLifecycleSection,
+    whyHatchSection,
     clarificationCardMarkup,
     isLowQualityProjectInput,
     isProjectReady,

@@ -331,6 +331,63 @@ window.SkillNestApp = (() => {
     revealNext(0);
   }
 
+  // ── Hero "I need help with…" typewriter ────────────────────────────────────
+  // Cycles example asks in the hero (type, pause, delete), ending each loop on
+  // a phrase that hands the mic to the visitor. Re-renders replace the DOM, so
+  // timers are cleared and restarted from render().
+
+  const heroTypewriterPhrases = [
+    "a website for my bakery that takes orders",
+    "automating my invoices with AI",
+    "a chatbot that answers my customers",
+    "turning messy spreadsheets into a dashboard",
+    "a logo and brand kit for my startup",
+    "your turn — type what you need below",
+  ];
+  let heroTypewriterTimer = null;
+
+  function clearHeroTypewriter() {
+    if (heroTypewriterTimer !== null) {
+      window.clearTimeout(heroTypewriterTimer);
+      heroTypewriterTimer = null;
+    }
+  }
+
+  function startHeroTypewriter() {
+    clearHeroTypewriter();
+    const el = document.getElementById("heroTypewriter");
+    if (!el) return;
+
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+      el.textContent = heroTypewriterPhrases[0];
+      return;
+    }
+
+    let phraseIndex = 0;
+    let pos = 0;
+    let deleting = false;
+
+    const tick = () => {
+      // Bail out if a re-render swapped the DOM under us.
+      if (!document.body.contains(el)) return;
+      const phrase = heroTypewriterPhrases[phraseIndex];
+      pos += deleting ? -1 : 1;
+      el.textContent = phrase.slice(0, pos);
+
+      let delay = deleting ? 26 : 46;
+      if (!deleting && pos === phrase.length) {
+        deleting = true;
+        delay = 2100; // let the finished phrase breathe
+      } else if (deleting && pos === 0) {
+        deleting = false;
+        phraseIndex = (phraseIndex + 1) % heroTypewriterPhrases.length;
+        delay = 420;
+      }
+      heroTypewriterTimer = window.setTimeout(tick, delay);
+    };
+    tick();
+  }
+
   function debugFlow(label, data = {}) {
     try {
       console.debug(`[Hatch flow] ${label}`, JSON.parse(JSON.stringify(data)));
@@ -4204,6 +4261,7 @@ window.SkillNestApp = (() => {
       renderFilePreviews();
       scrollAssistantToLatest();
       animateAssistantTyping();
+      startHeroTypewriter();
       if (route === "browse") applyTaskFilters();
     });
   }

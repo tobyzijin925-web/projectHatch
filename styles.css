@@ -194,6 +194,28 @@ a {
   font-weight: 700;
 }
 
+.nav-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.nav-login {
+  padding: 10px 12px;
+  border-radius: 999px;
+  color: var(--text-strong);
+  font-size: 0.94rem;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.nav-login:hover {
+  background: rgba(var(--tint-rgb), 0.07);
+  color: var(--ink);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -331,6 +353,149 @@ a {
 
 .hero-actions .btn.full {
   margin-top: 0;
+}
+
+/* Notion-style "I need help with [ … ]" line: the pill types, pauses, and
+   deletes example asks; clicking it drops focus into the real textarea. */
+.hero-typewriter {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: clamp(1.15rem, 2.3vw, 1.55rem);
+  font-weight: 800;
+  cursor: text;
+}
+
+.typewriter-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2em;
+  min-width: 1.4em;
+  padding: 0.1em 0.55em;
+  border-radius: 0.6em;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  text-align: left;
+}
+
+html.dark-mode .typewriter-pill {
+  color: var(--accent);
+}
+
+.typewriter-caret {
+  flex-shrink: 0;
+  width: 2px;
+  height: 1.2em;
+  margin-left: 3px;
+  background: currentColor;
+  animation: caret-blink 1.1s steps(1) infinite;
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typewriter-caret {
+    animation: none;
+  }
+}
+
+/* Why Hatch: side-by-side comparison against gig marketplaces plus the two
+   audiences the AI-first model serves. */
+.why-section .section-subtitle {
+  max-width: 720px;
+  margin: 16px auto 0;
+  color: var(--muted);
+  font-size: 1.08rem;
+  line-height: 1.65;
+}
+
+.compare-card {
+  width: min(920px, 100%);
+  margin: 30px auto 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.compare-row {
+  display: grid;
+  grid-template-columns: 0.8fr 1fr 1fr;
+  gap: 18px;
+  padding: 18px 24px;
+  border-top: 1px solid var(--line);
+  text-align: left;
+}
+
+.compare-row.compare-head {
+  border-top: 0;
+  padding-top: 22px;
+  padding-bottom: 14px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.compare-head .compare-hatch-col {
+  color: var(--accent-dark);
+}
+
+.compare-label {
+  color: var(--text-strong);
+  font-weight: 800;
+}
+
+.compare-them {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.compare-us {
+  color: var(--text-strong);
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.audience-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  width: min(920px, 100%);
+  margin: 18px auto 0;
+}
+
+.audience-card {
+  padding: 10px 26px 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.audience-card h3 {
+  margin: 0 0 10px;
+}
+
+.audience-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
 }
 
 .task-box,
@@ -4224,6 +4389,12 @@ html.dark-mode .btn.secondary:hover {
     max-height: none;
   }
 
+  /* Dissolve the desktop grouping so brand, links, and actions wrap inside
+     .nav exactly as they did before .nav-left existed. */
+  .nav-left {
+    display: contents;
+  }
+
   .nav-links {
     order: 3;
     width: 100%;
@@ -4233,6 +4404,26 @@ html.dark-mode .btn.secondary:hover {
   .nav-actions {
     order: 2;
     margin-left: auto;
+  }
+
+  .compare-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .compare-row.compare-head {
+    display: none;
+  }
+
+  .compare-them::before {
+    content: "Gig marketplaces: ";
+    font-weight: 800;
+  }
+
+  .compare-us::before {
+    content: "Hatch: ";
+    color: var(--accent-dark);
+    font-weight: 800;
   }
 
   .hero-inner,
@@ -4351,6 +4542,14 @@ html.dark-mode .btn.secondary:hover {
 
   .hero-actions {
     grid-template-columns: 1fr;
+  }
+
+  .audience-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-typewriter {
+    font-size: 1.05rem;
   }
 
   .modal-panel {
