@@ -63,7 +63,9 @@ html.dark-mode {
   --info: #8b93f7;
   --info-soft: #1f2340;
   --disabled-bg: #383c46;
-  --badge-bg: #2a2418;
+  /* Neutral slate, slightly raised off --paper — replaces an olive tint that
+     read as an unpleasant yellow on the dark cards. */
+  --badge-bg: #22262f;
   --neutral-pill-bg: #262a33;
   --warning-bg: #3a2a1e;
   --warning-text: #f0a874;
