@@ -1936,7 +1936,16 @@ window.SkillNestComponents = (() => {
             <p>AI-powered Hatches for real business work.</p>
           </div>
           <div class="footer-links">
-            <button class="dark-mode-toggle" type="button" onclick="SkillNestApp.toggleDarkMode()" aria-pressed="${document.documentElement.classList.contains("dark-mode")}">${document.documentElement.classList.contains("dark-mode") ? "Light mode" : "Dark mode"}</button>
+            <button class="theme-switch" type="button" role="switch" onclick="SkillNestApp.toggleDarkMode()" aria-checked="${document.documentElement.classList.contains("dark-mode")}" aria-label="${document.documentElement.classList.contains("dark-mode") ? "Switch to light mode" : "Switch to dark mode"}">
+              <span class="theme-switch-track" aria-hidden="true">
+                <span class="theme-switch-glyph sun">☀</span>
+                <span class="theme-switch-glyph moon">☾</span>
+                <span class="theme-switch-thumb">
+                  <span class="theme-switch-thumb-icon sun">☀</span>
+                  <span class="theme-switch-thumb-icon moon">☾</span>
+                </span>
+              </span>
+            </button>
             <a href="#post-task">Post a Hatch</a>
             <a href="#browse">Browse Hatches</a>
             <a href="#verified-work">Verified Results</a>

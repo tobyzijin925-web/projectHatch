@@ -4329,28 +4329,129 @@ dd {
   font-weight: 750;
 }
 
-.dark-mode-toggle {
-  background: #101828;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  padding: 6px 14px;
-  color: #f7f4ed;
-  font-weight: 750;
+/* Animated day/night switch: the thumb slides across the track while the sun
+   and moon icons cross-fade. Light mode = sun/left, dark mode = moon/right. */
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
   cursor: pointer;
-  transition: background 160ms ease, color 160ms ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.dark-mode-toggle:hover {
-  background: #1d2939;
+.theme-switch-track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 58px;
+  height: 30px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f4c95d, #f0993e);
+  box-shadow: inset 0 1px 3px rgba(16, 24, 40, 0.28);
+  transition: background 320ms ease;
 }
 
-html.dark-mode .dark-mode-toggle {
+/* Faint ambient glyph on each end of the track, so the destination mode is
+   hinted behind the sliding thumb. */
+.theme-switch-glyph {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  line-height: 1;
+  transition: opacity 260ms ease;
+}
+
+.theme-switch-glyph.sun {
+  left: 8px;
+  color: rgba(255, 253, 248, 0.85);
+  opacity: 0;
+}
+
+.theme-switch-glyph.moon {
+  right: 8px;
+  color: rgba(203, 213, 225, 0.9);
+  opacity: 1;
+}
+
+.theme-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
   background: #fffdf8;
-  color: #101828;
+  box-shadow: 0 2px 5px rgba(16, 24, 40, 0.35);
+  transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-html.dark-mode .dark-mode-toggle:hover {
-  background: #f2f4f7;
+/* The active-mode icon rides on the thumb and cross-fades on toggle. */
+.theme-switch-thumb-icon {
+  grid-area: 1 / 1;
+  font-size: 14px;
+  line-height: 1;
+  transition: opacity 260ms ease;
+}
+
+.theme-switch-thumb-icon.sun {
+  color: #f0993e;
+  opacity: 1;
+}
+
+.theme-switch-thumb-icon.moon {
+  color: #2c3654;
+  opacity: 0;
+}
+
+.theme-switch:hover .theme-switch-thumb {
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.45);
+}
+
+.theme-switch:focus-visible {
+  outline: none;
+}
+
+.theme-switch:focus-visible .theme-switch-track {
+  box-shadow: inset 0 1px 3px rgba(16, 24, 40, 0.28), 0 0 0 3px rgba(24, 183, 122, 0.4);
+}
+
+html.dark-mode .theme-switch-track {
+  background: linear-gradient(135deg, #2c3654, #101828);
+}
+
+html.dark-mode .theme-switch-thumb {
+  transform: translateX(28px);
+  background: #e5e9f0;
+}
+
+html.dark-mode .theme-switch-thumb-icon.sun {
+  opacity: 0;
+}
+
+html.dark-mode .theme-switch-thumb-icon.moon {
+  opacity: 1;
+}
+
+html.dark-mode .theme-switch-glyph.sun {
+  opacity: 1;
+}
+
+html.dark-mode .theme-switch-glyph.moon {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-switch-track,
+  .theme-switch-glyph,
+  .theme-switch-thumb,
+  .theme-switch-thumb-icon {
+    transition: none;
+  }
 }
 
 html.dark-mode .btn.secondary {

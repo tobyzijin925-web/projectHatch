@@ -27,7 +27,18 @@ window.SkillNestApp = (() => {
     const isDark = !document.documentElement.classList.contains("dark-mode");
     document.documentElement.classList.toggle("dark-mode", isDark);
     localStorage.setItem("hatchDarkMode", String(isDark));
-    render();
+
+    // Update the two bits of markup that depend on the theme in place, instead
+    // of a full render(), so the switch element survives and its CSS slide
+    // animation actually plays (a re-render would swap in a fresh element
+    // already at its final position, killing the transition).
+    document.querySelectorAll(".theme-switch").forEach((el) => {
+      el.setAttribute("aria-checked", String(isDark));
+      el.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
+    });
+    document.querySelectorAll(".brand-logo").forEach((img) => {
+      img.src = `assets/hatchlogo${isDark ? "-dark" : ""}.png?v=2`;
+    });
   }
 
   function readJson(key, fallback) {
