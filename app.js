@@ -201,7 +201,15 @@ window.SkillNestApp = (() => {
   }
 
   function getGeneratedBrief() {
-    return readJson("skillnestGeneratedBrief", null);
+    const brief = readJson("skillnestGeneratedBrief", null);
+    // Defend every "confidence < 40 = invalid" check against a brief that was
+    // stored on a 0-1 scale (older build, or a model reply mid-conversation):
+    // normalize to 0-100 on read so a resumed conversation can't be misread as
+    // invalid_input. Idempotent for values already on the 0-100 scale.
+    if (brief && brief.confidence != null) {
+      brief.confidence = normalizeConfidence(brief.confidence, brief.isValidProject ? 72 : 0);
+    }
+    return brief;
   }
 
   function getAssistantMessages() {
@@ -623,6 +631,19 @@ window.SkillNestApp = (() => {
     return result.data?.result || result.data?.brief || result.payload;
   }
 
+  // DeepSeek is not told which scale to use for `confidence`, so it returns
+  // either a 0-1 fraction (e.g. 0.6) or a 0-100 number (e.g. 60). The rest of
+  // the app treats confidence as 0-100 (the "< 40 = invalid" gate, defaults of
+  // 72/58/55). Without this, a valid reply scored 0.6 reads as "< 40" and the
+  // whole brief flips to invalid_input — which strands the conversation on the
+  // generic "What are you trying to accomplish?" question forever.
+  function normalizeConfidence(value, fallback = 0) {
+    const raw = Number(value);
+    if (!Number.isFinite(raw) || raw <= 0) return fallback;
+    const scaled = raw <= 1 ? raw * 100 : raw; // 0-1 fraction -> percentage
+    return Math.round(Math.max(0, Math.min(100, scaled)));
+  }
+
   function normalizeProjectBrief(brief, payload = {}) {
     const structuredBrief = brief.brief && typeof brief.brief === "object";
     const serverShaped = structuredBrief
@@ -705,11 +726,15 @@ window.SkillNestApp = (() => {
       || rawBrief.goal,
     );
     const taskDetected = response.task_detected === true || response.taskDetected === true || hasProjectSignal;
-    const isValidProject = response.is_valid_project === true
-      || response.isValidProject === true
+    // The model explicitly declaring the project valid is a stronger signal than
+    // its confidence number, which it scores on an inconsistent scale (0-1, 0-10,
+    // 0-100 all observed). When it's explicit, don't let a low/misscaled
+    // confidence flip a real task to invalid_input and strand the conversation.
+    const explicitlyValid = response.is_valid_project === true || response.isValidProject === true;
+    const isValidProject = explicitlyValid
       || (response.valid_input === true && taskDetected)
       || (response.valid_input !== false && hasProjectSignal);
-    const confidence = Math.max(0, Math.min(100, Number(response.confidence) || (isValidProject ? 72 : 0)));
+    const confidence = normalizeConfidence(response.confidence, isValidProject ? 72 : 0);
     if (budgetOnlyWithoutProject(payload, response)) {
       return {
         ...invalidProjectBrief(payload.inputText || ""),
@@ -719,9 +744,12 @@ window.SkillNestApp = (() => {
     }
     const stage = ["invalid_input", "understanding_project", "clarifying_missing_info", "ready_to_post"].includes(response.stage)
       ? response.stage
-      : (isValidProject && confidence >= 40 ? "clarifying_missing_info" : "invalid_input");
+      : (isValidProject && (explicitlyValid || confidence >= 40) ? "clarifying_missing_info" : "invalid_input");
 
-    if (!isValidProject || confidence < 40 || stage === "invalid_input") {
+    // Low confidence alone no longer condemns a project the model called valid —
+    // only genuine invalidity (or an explicit invalid_input stage) does.
+    const lowConfidence = confidence < 40 && !explicitlyValid;
+    if (!isValidProject || lowConfidence || stage === "invalid_input") {
       if (payload.mode === "clarify" && payload.answer) {
         const recovered = recoveredBriefFromAnswer(payload.answer, previous);
         if (recovered) return recovered;

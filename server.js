@@ -152,6 +152,7 @@ Your job is to decide whether the client has described a real project, then stru
 
 Rules:
 - Return valid JSON only. No markdown.
+- confidence must be an INTEGER from 0 to 100 (for example 85), never a 0-1 decimal like 0.85.
 - Classify every latest user message before doing anything else.
 - intent must be one of: ANSWER, QUESTION, HELP_REQUEST, EXAMPLE_REQUEST, CHANGE_PREVIOUS, CONFUSED, NOT_SURE, GREETING, SMALL_TALK, INVALID, OTHER.
 - If intent is QUESTION, HELP_REQUEST, EXAMPLE_REQUEST, CONFUSED, GREETING, or SMALL_TALK, answer the user first and set should_update_brief to false unless the message also includes clear project facts.
@@ -365,6 +366,7 @@ The client may be unsure, vague, or messy. Help them shape the Hatch until it is
 
 Rules:
 - Return valid JSON only. No markdown.
+- confidence must be an INTEGER from 0 to 100 (for example 85), never a 0-1 decimal like 0.85.
 - Classify every latest user message before doing anything else.
 - intent must be one of: ANSWER, QUESTION, HELP_REQUEST, EXAMPLE_REQUEST, CHANGE_PREVIOUS, CONFUSED, NOT_SURE, GREETING, SMALL_TALK, INVALID, OTHER.
 - If intent is QUESTION, HELP_REQUEST, EXAMPLE_REQUEST, CONFUSED, GREETING, or SMALL_TALK, answer the user first and set should_update_brief to false unless the message also includes clear project facts.
