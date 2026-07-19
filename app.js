@@ -122,12 +122,51 @@ window.SkillNestApp = (() => {
     return account;
   }
 
+  // Posted Hatches and missions are per-account data, but they used to be
+  // stored under one shared key regardless of who was logged in — so on a
+  // browser with two local accounts (e.g. an admin and the quick-test login),
+  // posting or applying as one account showed up under the other too. Keys
+  // are now suffixed with the active account's identity; scopedKey() falls
+  // back to the bare key when logged out (nothing account-specific to scope).
+  function accountScopeId() {
+    const account = getAccount();
+    return String(account.username || account.email || "").trim().toLowerCase();
+  }
+
+  function scopedKey(base) {
+    const scope = accountScopeId();
+    return scope ? `${base}::${scope}` : base;
+  }
+
+  // One-time migration: the first account to load the app after this change
+  // inherits whatever was in the old shared key, then the shared key is
+  // removed so no other account can also inherit it later.
+  function migrateLegacyKey(base) {
+    const scoped = scopedKey(base);
+    if (scoped === base) return; // not logged in — nothing to scope yet
+    if (localStorage.getItem(scoped) !== null) return; // already migrated for this account
+    const legacy = localStorage.getItem(base);
+    if (legacy === null) return;
+    localStorage.setItem(scoped, legacy);
+    localStorage.removeItem(base);
+  }
+
+  function postedTasksKey() {
+    migrateLegacyKey("skillnestPostedTasks");
+    return scopedKey("skillnestPostedTasks");
+  }
+
+  function missionsKey() {
+    migrateLegacyKey("skillnestMissions");
+    return scopedKey("skillnestMissions");
+  }
+
   function getMissions() {
-    return readJson("skillnestMissions", []);
+    return readJson(missionsKey(), []);
   }
 
   function getPostedTasks() {
-    return readJson("skillnestPostedTasks", []);
+    return readJson(postedTasksKey(), []);
   }
 
   // A data: URL is self-contained and durable (survives reload, can be sent
@@ -174,6 +213,13 @@ window.SkillNestApp = (() => {
     const postedIds = new Set(posted.map((task) => task.id));
     const removedSeeds = new Set(readJson("hatchRemovedSeedTasks", []));
     return [...posted, ...tasks.filter((task) => !postedIds.has(task.id) && !removedSeeds.has(task.id))];
+  }
+
+  // Browse should only surface work someone else posted — a client shouldn't
+  // find (and be able to "Apply to") their own Hatch in the marketplace.
+  function browsableTasks() {
+    const ownIds = new Set(getPostedTasks().map((task) => task.id));
+    return marketplaceTasks().filter((task) => !ownIds.has(task.id));
   }
 
   function getOperatorApplications() {
@@ -2909,7 +2955,7 @@ window.SkillNestApp = (() => {
     const files = Array.isArray(postedTasks[taskIndex].files) ? [...postedTasks[taskIndex].files] : [];
     files.splice(index, 1);
     postedTasks[taskIndex] = { ...postedTasks[taskIndex], files };
-    localStorage.setItem("skillnestPostedTasks", JSON.stringify(postedTasks));
+    localStorage.setItem(postedTasksKey(), JSON.stringify(postedTasks));
     render();
     openTaskDetail(taskId);
   }
@@ -3290,7 +3336,7 @@ window.SkillNestApp = (() => {
     }
 
     const postedTask = reviewedBriefToPostedTask(brief);
-    if (!saveListItem("skillnestPostedTasks", postedTask, "id")) {
+    if (!saveListItem(postedTasksKey(), postedTask, "id")) {
       window.alert("The attached files are too large to submit together. Remove one and try again.");
       return;
     }
@@ -3300,7 +3346,7 @@ window.SkillNestApp = (() => {
     if (backendToken()) {
       backendFetch("/api/hatches", { method: "POST", body: postedTask }).then((result) => {
         if (!result?.ok) return;
-        saveListItem("skillnestPostedTasks", { ...postedTask, backendId: result.hatch.id }, "id");
+        saveListItem(postedTasksKey(), { ...postedTask, backendId: result.hatch.id }, "id");
       });
     }
     localStorage.setItem("hatchProfileNotice", "Your Hatch has been submitted.");
@@ -3662,7 +3708,7 @@ window.SkillNestApp = (() => {
     }
 
     saveListItem(
-      "skillnestMissions",
+      missionsKey(),
       { ...task, status, backendId, backendState, updatedAt: new Date().toISOString() },
       "id"
     );
@@ -3682,7 +3728,7 @@ window.SkillNestApp = (() => {
     if (!task) return false;
     if (C.statusInfo(task.status).label === "Hatched") return false;
     const status = pending.status || "Saved";
-    saveListItem("skillnestMissions", { ...task, status, updatedAt: new Date().toISOString() }, "id");
+    saveListItem(missionsKey(), { ...task, status, updatedAt: new Date().toISOString() }, "id");
     localStorage.setItem(
       "hatchProfileNotice",
       status === "Incubating" || status === "Accepted"
@@ -3714,7 +3760,7 @@ window.SkillNestApp = (() => {
 
   function removeMission(identifier) {
     const missions = getMissions().filter((mission) => mission.id !== identifier && encodeURIComponent(mission.title) !== identifier);
-    localStorage.setItem("skillnestMissions", JSON.stringify(missions));
+    localStorage.setItem(missionsKey(), JSON.stringify(missions));
     render();
   }
 
@@ -3830,7 +3876,7 @@ window.SkillNestApp = (() => {
       delivered,
     };
     saveListItem(
-      "skillnestMissions",
+      missionsKey(),
       { ...mission, status: "In review", submission, backendState: delivered ? "submitted" : mission.backendState, updatedAt: new Date().toISOString() },
       "id"
     );
@@ -3838,11 +3884,13 @@ window.SkillNestApp = (() => {
     // Local bridge: mirror the submission onto the poster's copy of this Hatch
     // so the client can review it in the same browser even when the two sides
     // never met on the backend (self-posted demo Hatches, offline, seed tasks).
+    // Posted/mission lists are per-account, so this only ever matches when the
+    // same logged-in account is testing both sides of one Hatch.
     const posted = getPostedTasks();
     const postedIndex = posted.findIndex((task) => task.id === mission.id || (mission.backendId && task.backendId === mission.backendId));
     if (postedIndex !== -1) {
       posted[postedIndex] = { ...posted[postedIndex], status: "In review", submission, updatedAt: new Date().toISOString() };
-      localStorage.setItem("skillnestPostedTasks", JSON.stringify(posted));
+      localStorage.setItem(postedTasksKey(), JSON.stringify(posted));
     }
 
     localStorage.removeItem("hatchSubmissionDraftFiles");
@@ -3890,18 +3938,19 @@ window.SkillNestApp = (() => {
       ? { ...task.submission, status: approving ? "approved" : "rejected", feedback: feedback || task.submission.feedback, reviewedAt: new Date().toISOString() }
       : task.submission;
     saveListItem(
-      "skillnestPostedTasks",
+      postedTasksKey(),
       { ...task, status: approving ? "Hatched" : "Incubating", submission: reviewedSubmission, updatedAt: new Date().toISOString() },
       "id"
     );
 
     // Local bridge back to the Hatcher's copy so their mission reflects the
     // decision (Hatched on approve, back to Incubating to revise on reject).
+    // Only matches when the same account is testing both sides (see submitWork).
     const missions = getMissions();
     const missionIndex = missions.findIndex((mission) => mission.id === task.id || (task.backendId && mission.backendId === task.backendId));
     if (missionIndex !== -1) {
       missions[missionIndex] = { ...missions[missionIndex], status: approving ? "Hatched" : "Incubating", submission: reviewedSubmission, updatedAt: new Date().toISOString() };
-      localStorage.setItem("skillnestMissions", JSON.stringify(missions));
+      localStorage.setItem(missionsKey(), JSON.stringify(missions));
     }
 
     localStorage.setItem("hatchProfileNotice", approving
@@ -3916,7 +3965,7 @@ window.SkillNestApp = (() => {
     if (!window.confirm("Delete this posted Hatch?")) return;
     const target = getPostedTasks().find((task) => task.id === identifier || encodeURIComponent(task.title) === identifier);
     const postedTasks = getPostedTasks().filter((task) => task.id !== identifier && encodeURIComponent(task.title) !== identifier);
-    localStorage.setItem("skillnestPostedTasks", JSON.stringify(postedTasks));
+    localStorage.setItem(postedTasksKey(), JSON.stringify(postedTasks));
     // Clean up the backend mirror too: admins delete outright, owners cancel.
     if (target?.backendId && backendToken()) {
       const path = `/api/hatches/${encodeURIComponent(target.backendId)}`;
@@ -3947,7 +3996,7 @@ window.SkillNestApp = (() => {
       status: "New Hatch",
       createdAt: new Date().toISOString(),
     };
-    saveListItem("skillnestPostedTasks", postedTask, "id");
+    saveListItem(postedTasksKey(), postedTask, "id");
     localStorage.removeItem("skillnestDraftTask");
     localStorage.removeItem("skillnestGeneratedBrief");
     document.getElementById("taskSuccess")?.classList.add("show");
@@ -4314,7 +4363,7 @@ window.SkillNestApp = (() => {
       else if (result) notice = result.error || "The backend refused to delete this Hatch.";
     }
     if (entry?.source === "posted") {
-      localStorage.setItem("skillnestPostedTasks", JSON.stringify(getPostedTasks().filter((task) => task.id !== id)));
+      localStorage.setItem(postedTasksKey(), JSON.stringify(getPostedTasks().filter((task) => task.id !== id)));
     } else if (entry?.source === "seed") {
       const removed = readJson("hatchRemovedSeedTasks", []);
       if (!removed.includes(id)) removed.push(id);
@@ -4464,7 +4513,7 @@ window.SkillNestApp = (() => {
       : route === "trust"
         ? Pages.trustPage()
       : route === "browse"
-        ? Pages.browsePage(marketplaceTasks())
+        ? Pages.browsePage(browsableTasks())
       : route === "verified-work"
         ? Pages.verifiedWorkPage()
       : route === "profile"
