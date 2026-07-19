@@ -419,18 +419,30 @@ window.SkillNestPages = (() => {
     const removeLabel = type === "posted" ? "Delete" : "Remove";
     return `
       <div class="profile-list">
-        ${items.map((item) => `
+        ${items.map((item) => {
+          const id = item.id || encodeURIComponent(item.title);
+          const status = item.status || "";
+          // Hatcher's claimed Hatches can submit work; posted Hatches with a
+          // deliverable waiting can be reviewed by the poster.
+          const canSubmit = type === "mission" && (status === "Incubating" || status === "Accepted");
+          const awaitingReview = type === "mission" && status === "In review";
+          const canReview = type === "posted" && (item.submission || (item.backendId && status !== "Hatched"));
+          return `
           <article>
             <div>
               <h3>${C.escapeHtml(item.title)}</h3>
               <p>${C.escapeHtml(item.category || item.industry || item.business || "")} ${item.budget ? `&middot; ${C.escapeHtml(item.budget)}` : ""}</p>
             </div>
             <div class="mission-actions">
-              <span>${C.escapeHtml(item.status || item.level || "Open")}</span>
-              ${removable ? `<button class="btn ghost small danger" type="button" onclick="SkillNestApp.${removeHandler}('${item.id || encodeURIComponent(item.title)}')">${removeLabel}</button>` : ""}
+              <span>${C.escapeHtml(status || item.level || "Open")}</span>
+              ${canSubmit ? `<button class="btn primary small" type="button" onclick="SkillNestApp.openSubmitWork('${id}')">Submit work</button>` : ""}
+              ${awaitingReview ? `<button class="btn secondary small" type="button" onclick="SkillNestApp.openSubmitWork('${id}')">Update submission</button>` : ""}
+              ${canReview ? `<button class="btn primary small" type="button" onclick="SkillNestApp.openReviewWork('${id}')">Review work</button>` : ""}
+              ${removable ? `<button class="btn ghost small danger" type="button" onclick="SkillNestApp.${removeHandler}('${id}')">${removeLabel}</button>` : ""}
             </div>
           </article>
-        `).join("")}
+        `;
+        }).join("")}
       </div>
     `;
   }

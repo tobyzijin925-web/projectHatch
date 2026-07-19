@@ -3566,7 +3566,7 @@ window.SkillNestApp = (() => {
     applyTaskFilters();
   }
 
-  function saveMission(taskId, status) {
+  async function saveMission(taskId, status) {
     if (!isLoggedIn()) {
       localStorage.setItem("hatchPendingMission", JSON.stringify({ taskId, status }));
       setRoute("auth");
@@ -3575,11 +3575,33 @@ window.SkillNestApp = (() => {
     const task = marketplaceTasks().find((item) => item.id === taskId);
     if (!task) return;
     if (C.statusInfo(task.status).label === "Hatched") return;
-    saveListItem("skillnestMissions", { ...task, status, updatedAt: new Date().toISOString() }, "id");
+
+    // Applying to a Hatch (Incubating) claims it on the backend when possible so
+    // the deliverable the Hatcher submits later actually reaches the poster. If
+    // the task has no backendId (seed tasks) or the server is unreachable, the
+    // mission is still saved locally and the demo flow keeps working.
+    let backendId = task.backendId || null;
+    let backendState = task.backendState || null;
+    const applying = status === "Incubating" || status === "Accepted";
+    if (applying && backendId && backendToken()) {
+      const result = await backendFetch(`/api/hatches/${encodeURIComponent(backendId)}/claim`, { method: "POST" });
+      if (result?.ok && result.hatch) {
+        backendState = result.hatch.state || "claimed";
+      } else if (result?.hatch?.state) {
+        // Already claimed (e.g. re-applying) — keep the reported state.
+        backendState = result.hatch.state;
+      }
+    }
+
+    saveListItem(
+      "skillnestMissions",
+      { ...task, status, backendId, backendState, updatedAt: new Date().toISOString() },
+      "id"
+    );
     updateTaskCardState(taskId, status);
     const feedback = document.getElementById("taskFeedback");
     if (feedback) {
-      feedback.textContent = status === "Incubating" || status === "Accepted" ? "Hatch added to your Hatcher Hatches." : "Hatch saved to your profile.";
+      feedback.textContent = applying ? "Hatch added to your Hatcher Hatches." : "Hatch saved to your profile.";
       feedback.classList.add("show");
     }
   }
@@ -3625,6 +3647,179 @@ window.SkillNestApp = (() => {
   function removeMission(identifier) {
     const missions = getMissions().filter((mission) => mission.id !== identifier && encodeURIComponent(mission.title) !== identifier);
     localStorage.setItem("skillnestMissions", JSON.stringify(missions));
+    render();
+  }
+
+  // --- Work submission (Hatcher) and review (poster) ---------------------
+  // The Hatcher describes the deliverable, optionally attaching files and
+  // links, and submits it for the poster to review. Submissions are sent to
+  // the backend when the mission was claimed there (so the poster is notified
+  // and can approve/reject from any session); a local copy is always kept so
+  // the flow works offline and for seed tasks with no backend row.
+
+  function findMission(missionId) {
+    return getMissions().find((mission) => mission.id === missionId);
+  }
+
+  function openSubmitWork(missionId) {
+    const mission = findMission(missionId);
+    if (!mission) return;
+    localStorage.removeItem("hatchSubmissionDraftFiles");
+    openModal(C.submitWorkModal(mission));
+  }
+
+  async function handleSubmissionFiles(event) {
+    const input = event.target;
+    const chosen = [...(input.files || [])];
+    if (!chosen.length) return;
+
+    const oversized = chosen.filter((file) => file.size > MAX_DRAFT_FILE_BYTES);
+    const accepted = chosen.filter((file) => file.size <= MAX_DRAFT_FILE_BYTES);
+    if (oversized.length) {
+      window.alert(`${oversized.length === 1 ? "This file is" : "These files are"} over 3 MB and can't be attached: ${oversized.map((file) => file.name).join(", ")}.`);
+    }
+    if (!accepted.length) {
+      input.value = "";
+      return;
+    }
+
+    let readFiles;
+    try {
+      readFiles = await Promise.all(accepted.map(async (file) => ({
+        name: file.name,
+        type: file.type || "file",
+        size: file.size || 0,
+        objectUrl: await readFileAsDataUrl(file),
+      })));
+    } catch (error) {
+      window.alert(error.message || "One of those files could not be read. Please try again.");
+      input.value = "";
+      return;
+    }
+
+    const existing = readJson("hatchSubmissionDraftFiles", []);
+    const nextFiles = [...existing, ...readFiles];
+    if (!trySetLocalStorage("hatchSubmissionDraftFiles", nextFiles)) {
+      window.alert("These files are too large to attach together. Try removing one or attaching fewer at a time.");
+      input.value = "";
+      return;
+    }
+    input.value = "";
+    renderSubmissionAttachments();
+  }
+
+  function removeSubmissionFile(index) {
+    const files = readJson("hatchSubmissionDraftFiles", []);
+    files.splice(index, 1);
+    localStorage.setItem("hatchSubmissionDraftFiles", JSON.stringify(files));
+    renderSubmissionAttachments();
+  }
+
+  function renderSubmissionAttachments() {
+    const host = document.getElementById("submissionAttachments");
+    if (host) host.innerHTML = C.submissionAttachmentList(readJson("hatchSubmissionDraftFiles", []));
+  }
+
+  async function submitWork(event, missionId) {
+    event.preventDefault();
+    const mission = findMission(missionId);
+    if (!mission) return;
+
+    const messageEl = document.getElementById("submissionMessage");
+    const linksEl = document.getElementById("submissionLinks");
+    const message = (messageEl?.value || "").trim();
+    if (!message) {
+      messageEl?.focus();
+      return;
+    }
+
+    const links = (linksEl?.value || "")
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((url) => ({ name: url, kind: "link", url }));
+    const files = readJson("hatchSubmissionDraftFiles", []).map((file) => ({ ...file, kind: "file" }));
+    const attachments = [...files, ...links];
+
+    let delivered = false;
+    if (mission.backendId && backendToken()) {
+      const result = await backendFetch(`/api/hatches/${encodeURIComponent(mission.backendId)}/submit`, {
+        method: "POST",
+        body: { message, attachments },
+      });
+      if (result && result.status && result.status >= 400) {
+        window.alert(result.error || "That work couldn't be submitted to the server. It's been saved locally.");
+      } else if (result?.ok) {
+        delivered = true;
+      }
+    }
+
+    const submission = {
+      message,
+      attachments,
+      status: "pending",
+      submittedAt: new Date().toISOString(),
+      delivered,
+    };
+    saveListItem(
+      "skillnestMissions",
+      { ...mission, status: "In review", submission, backendState: delivered ? "submitted" : mission.backendState, updatedAt: new Date().toISOString() },
+      "id"
+    );
+    localStorage.removeItem("hatchSubmissionDraftFiles");
+    localStorage.setItem("hatchProfileNotice", delivered
+      ? "Work submitted. The client has been notified and can review it."
+      : "Work submitted and saved to this Hatch.");
+    closeModal();
+    refreshInbox();
+    render();
+  }
+
+  function openReviewWork(postedId) {
+    const task = getPostedTasks().find((item) => item.id === postedId || encodeURIComponent(item.title) === postedId);
+    if (!task) return;
+
+    if (task.backendId && backendToken()) {
+      backendFetch(`/api/hatches/${encodeURIComponent(task.backendId)}`).then((result) => {
+        const remote = Array.isArray(result?.submissions)
+          ? [...result.submissions].reverse().find((sub) => sub.status === "pending") || result.submissions[result.submissions.length - 1]
+          : null;
+        openModal(C.reviewWorkModal(task, remote || task.submission || null));
+      });
+      return;
+    }
+    openModal(C.reviewWorkModal(task, task.submission || null));
+  }
+
+  async function reviewWork(postedId, decision) {
+    const task = getPostedTasks().find((item) => item.id === postedId || encodeURIComponent(item.title) === postedId);
+    if (!task) return;
+    const feedback = (document.getElementById("reviewFeedback")?.value || "").trim();
+    const approving = decision === "approve";
+
+    if (task.backendId && backendToken()) {
+      const result = await backendFetch(`/api/hatches/${encodeURIComponent(task.backendId)}/review`, {
+        method: "POST",
+        body: { decision: approving ? "approve" : "reject", feedback },
+      });
+      if (result && result.status && result.status >= 400) {
+        window.alert(result.error || "That review couldn't be sent to the server.");
+      }
+    }
+
+    const reviewedSubmission = task.submission
+      ? { ...task.submission, status: approving ? "approved" : "rejected", feedback: feedback || task.submission.feedback, reviewedAt: new Date().toISOString() }
+      : task.submission;
+    saveListItem(
+      "skillnestPostedTasks",
+      { ...task, status: approving ? "Hatched" : "Incubating", submission: reviewedSubmission, updatedAt: new Date().toISOString() },
+      "id"
+    );
+    localStorage.setItem("hatchProfileNotice", approving
+      ? "Submission approved. This Hatch is now Hatched."
+      : "Changes requested. The Hatcher has been asked to revise.");
+    closeModal();
+    refreshInbox();
     render();
   }
 
@@ -4256,6 +4451,12 @@ window.SkillNestApp = (() => {
     previewTaskFile,
     quickTestLogin,
     removeMission,
+    openSubmitWork,
+    handleSubmissionFiles,
+    removeSubmissionFile,
+    submitWork,
+    openReviewWork,
+    reviewWork,
     removeCustomChoice,
     removeDraftFile,
     removePostedTaskFile,

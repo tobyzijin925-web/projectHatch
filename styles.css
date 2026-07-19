@@ -1259,10 +1259,53 @@ button.chip:hover {
   color: var(--info);
 }
 
+.status-in-review .status-pill,
+.status-pill.status-in-review {
+  background: rgba(245, 158, 11, 0.16);
+  color: #b45309;
+}
+
 .status-completed,
 .status-hatched {
   border-color: rgba(102, 112, 133, 0.22);
   background: linear-gradient(180deg, var(--paper), var(--bg));
+}
+
+/* Submission modal: staged file/link rows and layout tweaks. */
+.submission-form .field textarea {
+  width: 100%;
+}
+
+.submission-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.submission-attachment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, rgba(102, 112, 133, 0.22));
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.submission-attachment strong {
+  display: block;
+  font-size: 0.92rem;
+}
+
+.submission-attachment span {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.muted-text.small {
+  font-size: 0.78rem;
 }
 
 .status-completed .status-pill,

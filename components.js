@@ -49,6 +49,7 @@ window.SkillNestComponents = (() => {
     const icons = {
       "New Hatch": "🥚",
       Incubating: "🛠",
+      "In review": "📮",
       Hatched: "🐣",
       Saved: "Saved",
     };
@@ -1826,6 +1827,109 @@ window.SkillNestComponents = (() => {
     `);
   }
 
+  // Renders the list of files/links a Hatcher has staged for a submission.
+  // Used inside submitWorkModal and refreshed live as files are attached.
+  function submissionAttachmentList(files = []) {
+    if (!files.length) return `<p class="muted-text small">No files attached yet.</p>`;
+    return `
+      <div class="submission-attachments">
+        ${files.map((file, index) => `
+          <article class="submission-attachment">
+            <div>
+              <strong>${escapeHtml(file.name || "File")}</strong>
+              <span>${escapeHtml(file.type || "file")}${file.size ? ` · ${Math.ceil(file.size / 1024)} KB` : ""}</span>
+            </div>
+            <button class="btn ghost small danger" type="button" onclick="SkillNestApp.removeSubmissionFile(${index})">Remove</button>
+          </article>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  function submitWorkModal(mission) {
+    return modal(`
+      <div class="detail-head">
+        <span class="level-ribbon">${escapeHtml(mission.level || "L1")}</span>
+        ${statusBadge(mission.status)}
+      </div>
+      <h1>Submit your work</h1>
+      <p class="muted-text">${escapeHtml(mission.title || "")}</p>
+      <form class="form-card submission-form" onsubmit="SkillNestApp.submitWork(event, '${mission.id}')">
+        <label class="field">
+          <span>What did you deliver?</span>
+          <textarea id="submissionMessage" rows="5" placeholder="Summarize the work, what's included, and anything the client should know." required></textarea>
+        </label>
+        <label class="field">
+          <span>Links <span class="muted-text small">(optional — one per line)</span></span>
+          <textarea id="submissionLinks" rows="2" placeholder="https://drive.google.com/...&#10;https://figma.com/..."></textarea>
+        </label>
+        <label class="field">
+          <span>Files <span class="muted-text small">(optional — up to 3 MB each)</span></span>
+          <input type="file" multiple onchange="SkillNestApp.handleSubmissionFiles(event)" />
+        </label>
+        <div id="submissionAttachments">${submissionAttachmentList([])}</div>
+        <div class="task-actions modal-actions">
+          <button class="btn secondary full" type="button" onclick="SkillNestApp.closeModal()">Cancel</button>
+          <button class="btn primary full" type="submit">Submit for review</button>
+        </div>
+      </form>
+    `);
+  }
+
+  function reviewWorkModal(task, submission) {
+    const attachments = Array.isArray(submission?.attachments) ? submission.attachments : [];
+    const statusLabel = submission?.status && submission.status !== "pending"
+      ? `<span class="status-pill status-${submission.status === "approved" ? "hatched" : "incubating"}">${submission.status === "approved" ? "Approved" : "Changes requested"}</span>`
+      : "";
+    return modal(`
+      <div class="detail-head">
+        <span class="level-ribbon">${escapeHtml(task.level || "L1")}</span>
+        ${statusBadge(task.status)}
+      </div>
+      <h1>Review submitted work</h1>
+      <p class="muted-text">${escapeHtml(task.title || "")}</p>
+      ${submission ? `
+        <h2>Deliverable ${statusLabel}</h2>
+        <p>${escapeHtml(submission.message || "No message provided.")}</p>
+        <h2>Attachments</h2>
+        ${attachments.length ? `
+          <div class="detail-file-list">
+            ${attachments.map((item) => item.kind === "link" || (!item.objectUrl && item.url) ? `
+              <article>
+                <strong>${escapeHtml(item.name || item.url || "Link")}</strong>
+                <span>Link</span>
+                <div class="detail-file-actions">
+                  <a class="btn ghost small" href="${escapeHtml(item.url || item.name)}" target="_blank" rel="noopener">Open</a>
+                </div>
+              </article>
+            ` : `
+              <article>
+                <strong>${escapeHtml(item.name || "File")}</strong>
+                <span>${escapeHtml(item.type || "file")}${item.size ? ` · ${Math.ceil(item.size / 1024)} KB` : ""}</span>
+                <div class="detail-file-actions">
+                  ${item.objectUrl ? `<a class="btn ghost small" href="${escapeHtml(item.objectUrl)}" download="${escapeHtml(item.name || "file")}">Download</a>` : `<span class="file-unavailable">Preview unavailable</span>`}
+                </div>
+              </article>
+            `).join("")}
+          </div>
+        ` : `<p class="muted-text">No attachments were included.</p>`}
+        ${submission.feedback ? `<h2>Your feedback</h2><p>${escapeHtml(submission.feedback)}</p>` : ""}
+        ${task.status === "Hatched" ? `
+          <p class="muted-text completion-note">This Hatch has been approved and is complete.</p>
+        ` : `
+          <label class="field">
+            <span>Feedback <span class="muted-text small">(optional — sent to the Hatcher)</span></span>
+            <textarea id="reviewFeedback" rows="3" placeholder="What looks good, or what needs changing?"></textarea>
+          </label>
+          <div class="task-actions modal-actions">
+            <button class="btn secondary full" type="button" onclick="SkillNestApp.reviewWork('${task.id}', 'reject')">Request changes</button>
+            <button class="btn primary full" type="button" onclick="SkillNestApp.reviewWork('${task.id}', 'approve')">Approve &amp; complete</button>
+          </div>
+        `}
+      ` : `<p class="muted-text">No work has been submitted for this Hatch yet.</p>`}
+    `);
+  }
+
   function operatorDetail(operator) {
     return modal(`
       <div class="operator-head detail-operator-head">
@@ -1925,6 +2029,9 @@ window.SkillNestComponents = (() => {
     rangeFilterMarkup,
     taskCard,
     taskDetail,
+    submitWorkModal,
+    reviewWorkModal,
+    submissionAttachmentList,
     taskReviewBriefMarkup,
     taskPreviewMarkup,
     textAreaField,
