@@ -1308,6 +1308,26 @@ button.chip:hover {
   font-size: 0.78rem;
 }
 
+/* Review state shown inline in the profile Hatch lists. */
+.mission-review-note {
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.mission-review-note.reviewing {
+  color: #b45309;
+}
+
+.mission-review-note.pending {
+  color: var(--info);
+}
+
+.profile-list article.is-in-review {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: linear-gradient(180deg, var(--paper), rgba(245, 158, 11, 0.08));
+}
+
 .status-completed .status-pill,
 .status-hatched .status-pill,
 .status-pill.status-hatched {

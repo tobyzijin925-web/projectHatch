@@ -426,15 +426,25 @@ window.SkillNestPages = (() => {
           // deliverable waiting can be reviewed by the poster.
           const canSubmit = type === "mission" && (status === "Incubating" || status === "Accepted");
           const awaitingReview = type === "mission" && status === "In review";
+          const submissionPending = type === "posted" && item.submission && item.submission.status === "pending";
           const canReview = type === "posted" && (item.submission || (item.backendId && status !== "Hatched"));
+          // Surface the review state right in the row so the Hatcher sees their
+          // work is with the client, and the client sees work is waiting.
+          const reviewNote = awaitingReview
+            ? `<p class="mission-review-note reviewing">📮 Submitted — the client is reviewing your work.</p>`
+            : submissionPending
+              ? `<p class="mission-review-note pending">📮 A submission is waiting for your review.</p>`
+              : "";
+          const displayStatus = status || item.level || "Open";
           return `
-          <article>
+          <article${awaitingReview ? ` class="is-in-review"` : ""}>
             <div>
               <h3>${C.escapeHtml(item.title)}</h3>
               <p>${C.escapeHtml(item.category || item.industry || item.business || "")} ${item.budget ? `&middot; ${C.escapeHtml(item.budget)}` : ""}</p>
+              ${reviewNote}
             </div>
             <div class="mission-actions">
-              <span>${C.escapeHtml(status || item.level || "Open")}</span>
+              ${C.statusBadge(displayStatus)}
               ${canSubmit ? `<button class="btn primary small" type="button" onclick="SkillNestApp.openSubmitWork('${id}')">Submit work</button>` : ""}
               ${awaitingReview ? `<button class="btn secondary small" type="button" onclick="SkillNestApp.openSubmitWork('${id}')">Update submission</button>` : ""}
               ${canReview ? `<button class="btn primary small" type="button" onclick="SkillNestApp.openReviewWork('${id}')">Review work</button>` : ""}
@@ -449,6 +459,7 @@ window.SkillNestPages = (() => {
 
   function profilePage(account, postedTasks, missions, operatorApplications = [], inbox = { messages: [], unreadCount: 0 }, adminData = { applications: [], hatches: [] }, adminHatches = []) {
     const accepted = missions.filter((mission) => mission.status === "Incubating" || mission.status === "Accepted");
+    const inReview = missions.filter((mission) => mission.status === "In review");
     const saved = missions.filter((mission) => mission.status === "Saved");
     const profileNotice = localStorage.getItem("hatchProfileNotice") || "";
     const unread = inbox.unreadCount || 0;
@@ -481,6 +492,7 @@ window.SkillNestPages = (() => {
             <div class="metric-grid">
               <div><strong>${postedTasks.length}</strong><span>posted</span></div>
               <div><strong>${accepted.length}</strong><span>incubating</span></div>
+              ${inReview.length ? `<div><strong>${inReview.length}</strong><span>in review</span></div>` : ""}
               <div><strong>${saved.length}</strong><span>saved</span></div>
             </div>
           </section>

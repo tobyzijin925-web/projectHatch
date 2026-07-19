@@ -3766,6 +3766,17 @@ window.SkillNestApp = (() => {
       { ...mission, status: "In review", submission, backendState: delivered ? "submitted" : mission.backendState, updatedAt: new Date().toISOString() },
       "id"
     );
+
+    // Local bridge: mirror the submission onto the poster's copy of this Hatch
+    // so the client can review it in the same browser even when the two sides
+    // never met on the backend (self-posted demo Hatches, offline, seed tasks).
+    const posted = getPostedTasks();
+    const postedIndex = posted.findIndex((task) => task.id === mission.id || (mission.backendId && task.backendId === mission.backendId));
+    if (postedIndex !== -1) {
+      posted[postedIndex] = { ...posted[postedIndex], status: "In review", submission, updatedAt: new Date().toISOString() };
+      localStorage.setItem("skillnestPostedTasks", JSON.stringify(posted));
+    }
+
     localStorage.removeItem("hatchSubmissionDraftFiles");
     localStorage.setItem("hatchProfileNotice", delivered
       ? "Work submitted. The client has been notified and can review it."
@@ -3815,6 +3826,16 @@ window.SkillNestApp = (() => {
       { ...task, status: approving ? "Hatched" : "Incubating", submission: reviewedSubmission, updatedAt: new Date().toISOString() },
       "id"
     );
+
+    // Local bridge back to the Hatcher's copy so their mission reflects the
+    // decision (Hatched on approve, back to Incubating to revise on reject).
+    const missions = getMissions();
+    const missionIndex = missions.findIndex((mission) => mission.id === task.id || (task.backendId && mission.backendId === task.backendId));
+    if (missionIndex !== -1) {
+      missions[missionIndex] = { ...missions[missionIndex], status: approving ? "Hatched" : "Incubating", submission: reviewedSubmission, updatedAt: new Date().toISOString() };
+      localStorage.setItem("skillnestMissions", JSON.stringify(missions));
+    }
+
     localStorage.setItem("hatchProfileNotice", approving
       ? "Submission approved. This Hatch is now Hatched."
       : "Changes requested. The Hatcher has been asked to revise.");
