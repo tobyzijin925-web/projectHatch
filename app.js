@@ -4038,6 +4038,15 @@ window.SkillNestApp = (() => {
       createdAt: new Date().toISOString(),
     };
     saveListItem(postedTasksKey(), postedTask, "id");
+    // Mirror to the backend so other accounts can actually discover this Hatch
+    // (browse pulls open Hatches from the server — see refreshOpenHatches())
+    // and so lifecycle updates (claim/submit/review) reach real inboxes.
+    if (backendToken()) {
+      backendFetch("/api/hatches", { method: "POST", body: postedTask }).then((result) => {
+        if (!result?.ok) return;
+        saveListItem(postedTasksKey(), { ...postedTask, backendId: result.hatch.id }, "id");
+      });
+    }
     localStorage.removeItem("skillnestDraftTask");
     localStorage.removeItem("skillnestGeneratedBrief");
     document.getElementById("taskSuccess")?.classList.add("show");
