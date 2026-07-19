@@ -215,11 +215,52 @@ window.SkillNestApp = (() => {
     return [...posted, ...tasks.filter((task) => !postedIds.has(task.id) && !removedSeeds.has(task.id))];
   }
 
+  // Open Hatches posted by *other* accounts only ever reach this browser via
+  // the backend — locally-posted tasks are scoped per account (see
+  // scopedKey()), so nothing in localStorage can show them. This is a cached
+  // read; refreshOpenHatches() below keeps the cache current.
+  function getRemoteOpenHatches() {
+    return readJson("hatchOpenHatchesCache", []);
+  }
+
+  function normalizeRemoteHatch(hatch) {
+    return {
+      id: hatch.id,
+      backendId: hatch.id,
+      title: hatch.title,
+      business: hatch.business || "Client",
+      objective: hatch.objective || hatch.description || "Create a clear, usable result for the client.",
+      description: hatch.description || hatch.objective || "",
+      budget: hatch.budget || "Flexible",
+      deadline: hatch.deadline || hatch.timeline || "Flexible",
+      timeline: hatch.timeline || hatch.deadline || "Flexible",
+      estimatedCompletion: hatch.estimatedCompletion || hatch.timeline || "Flexible",
+      industry: hatch.industry || "General",
+      category: hatch.category || hatch.industry || "General",
+      level: hatch.level || "L1",
+      status: hatch.status || "New Hatch",
+      deliverables: Array.isArray(hatch.deliverables) && hatch.deliverables.length ? hatch.deliverables : ["Review the Hatch brief", "Deliver the agreed outcome"],
+      scope: Array.isArray(hatch.scope) ? hatch.scope : [],
+      references: Array.isArray(hatch.references) ? hatch.references : [],
+      missingInfo: Array.isArray(hatch.missingInfo) ? hatch.missingInfo : [],
+      files: Array.isArray(hatch.files) ? hatch.files : [],
+      createdById: hatch.createdBy?.id ?? null,
+      createdByUsername: hatch.createdBy?.username || "",
+    };
+  }
+
   // Browse should only surface work someone else posted — a client shouldn't
   // find (and be able to "Apply to") their own Hatch in the marketplace.
   function browsableTasks() {
+    const account = getAccount();
     const ownIds = new Set(getPostedTasks().map((task) => task.id));
-    return marketplaceTasks().filter((task) => !ownIds.has(task.id));
+    const knownBackendIds = new Set(marketplaceTasks().map((task) => task.backendId).filter(Boolean));
+    const remote = getRemoteOpenHatches()
+      .filter((hatch) => !(hatch.createdBy?.id && account.id && hatch.createdBy.id === account.id))
+      .filter((hatch) => !(hatch.createdBy?.username && hatch.createdBy.username === account.username))
+      .filter((hatch) => !knownBackendIds.has(hatch.id))
+      .map(normalizeRemoteHatch);
+    return [...marketplaceTasks().filter((task) => !ownIds.has(task.id)), ...remote];
   }
 
   function getOperatorApplications() {
@@ -3686,7 +3727,7 @@ window.SkillNestApp = (() => {
       setRoute("auth");
       return;
     }
-    const task = marketplaceTasks().find((item) => item.id === taskId);
+    const task = findAnyTask(taskId);
     if (!task) return;
     if (C.statusInfo(task.status).label === "Hatched") return;
 
@@ -3723,7 +3764,7 @@ window.SkillNestApp = (() => {
   function completePendingMission() {
     const pending = readJson("hatchPendingMission", null);
     if (!pending?.taskId) return false;
-    const task = marketplaceTasks().find((item) => item.id === pending.taskId);
+    const task = findAnyTask(pending.taskId);
     localStorage.removeItem("hatchPendingMission");
     if (!task) return false;
     if (C.statusInfo(task.status).label === "Hatched") return false;
@@ -4253,6 +4294,24 @@ window.SkillNestApp = (() => {
     }
   }
 
+  // ── Browse ─────────────────────────────────────────────────────────────────
+  // Open Hatches from other accounts are public backend data, no auth needed.
+  // Same cache-then-refresh pattern as the inbox below.
+
+  let openHatchesRefreshInFlight = false;
+  async function refreshOpenHatches() {
+    if (openHatchesRefreshInFlight) return;
+    openHatchesRefreshInFlight = true;
+    const data = await backendFetch("/api/hatches");
+    openHatchesRefreshInFlight = false;
+    if (!data?.ok) return;
+    const cache = JSON.stringify(data.hatches);
+    if (cache !== localStorage.getItem("hatchOpenHatchesCache")) {
+      localStorage.setItem("hatchOpenHatchesCache", cache);
+      render();
+    }
+  }
+
   // ── Inbox ──────────────────────────────────────────────────────────────────
   // The inbox lives on the backend; a localStorage cache lets render() stay
   // synchronous. Refreshes re-render only when something actually changed,
@@ -4392,8 +4451,17 @@ window.SkillNestApp = (() => {
     setRoute(route);
   }
 
+  // Cards rendered from the backend's open-hatch feed (someone else's Hatch,
+  // discovered only through refreshOpenHatches — see browsableTasks()) don't
+  // exist in marketplaceTasks(), which is local-only. Fall back to the same
+  // remote cache so opening/applying to one of those cards still works.
+  function findAnyTask(taskId) {
+    return marketplaceTasks().find((item) => item.id === taskId)
+      || getRemoteOpenHatches().map(normalizeRemoteHatch).find((item) => item.id === taskId);
+  }
+
   function openTaskDetail(taskId) {
-    const task = marketplaceTasks().find((item) => item.id === taskId);
+    const task = findAnyTask(taskId);
     if (task) openModal(C.taskDetail(task));
   }
 
@@ -4529,6 +4597,7 @@ window.SkillNestApp = (() => {
       refreshApplicationStatus();
       refreshAdminData();
     }
+    if (route === "browse") refreshOpenHatches();
 
     document.getElementById("app").innerHTML = `<div class="app-shell">${C.nav(route, isLoggedIn(), account)}${page}${C.footer(isLoggedIn(), account)}</div>`;
     requestAnimationFrame(() => {

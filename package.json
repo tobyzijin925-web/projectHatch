@@ -1,0 +1,14 @@
+{
+  "name": "hatch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hatch - AI-assisted marketplace MVP prototype",
+  "main": "server.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/api.test.js"
+  }
+}

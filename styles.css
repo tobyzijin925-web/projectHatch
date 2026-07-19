@@ -1534,6 +1534,15 @@ button.chip:hover {
   flex-direction: column;
 }
 
+/* Filtering sets the hidden attribute on non-matching cards (applyTaskFilters
+   in app.js). Without this, the plain .task-card { display: flex } rule above
+   outranks the browser's default [hidden] { display: none } in the cascade
+   (author rules beat UA rules regardless of specificity), so filtered-out
+   cards stayed visible despite being marked hidden. */
+.task-card[hidden] {
+  display: none;
+}
+
 /* Pin budget + tags + action to the bottom so they align across every card. */
 .task-card-footer {
   margin-top: auto;
