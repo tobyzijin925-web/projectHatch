@@ -62,6 +62,34 @@ window.SkillNestPages = (() => {
     `;
   }
 
+  function hatchReviewPage(files = [], generatedBrief = null) {
+    if (!generatedBrief?.ok) {
+      return `
+        <main class="section page">
+          <div class="hatch-review-empty">
+            <h1>Nothing to review yet.</h1>
+            <p>Describe your Hatch first — once it’s shaped, you can review and post it here.</p>
+            <a class="btn primary" href="#post-task">Start a Hatch</a>
+          </div>
+        </main>
+      `;
+    }
+    return `
+      <main class="section page">
+        <div class="hatch-review-layout">
+          <div class="form-copy hatch-review-head">
+            <span class="section-label">Final review</span>
+            <h1>Review your Hatch.</h1>
+            <p>This is exactly what Hatchers will see. Check it once, then post it so they can take the work.</p>
+          </div>
+          <section class="review-card hatch-review-card">
+            ${C.finalReviewMarkup(generatedBrief, files, [])}
+          </section>
+        </div>
+      </main>
+    `;
+  }
+
   function fileLabel(file) {
     if (typeof file === "string") return C.escapeHtml(file);
     const size = file.size ? `${Math.ceil(file.size / 1024)} KB` : "Size unavailable";
@@ -713,6 +741,7 @@ window.SkillNestPages = (() => {
     homePage,
     howItWorksPage,
     operatorPage,
+    hatchReviewPage,
     postTaskPage,
     profilePage,
     signupPage,

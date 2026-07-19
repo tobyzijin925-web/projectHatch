@@ -775,8 +775,10 @@ window.SkillNestComponents = (() => {
     `;
   }
 
-  function shouldShowFinalReview(brief = {}, activeIndex = 0) {
-    if (localStorage.getItem("hatchFinalReviewDismissed") === "true") return false;
+  // Pure readiness signal: does the AI consider this brief postable? Used by the
+  // Review and Post button, which must stay green even after the user dismisses
+  // the final-review prompt to keep chatting.
+  function briefReadyForReview(brief = {}, activeIndex = 0) {
     const readiness = String(brief.readiness || brief.stage || "").toLowerCase();
     const missingInfo = Array.isArray(brief.missingInfo) ? brief.missingInfo.filter(Boolean) : [];
     const message = String(brief.assistantMessage || "");
@@ -789,6 +791,11 @@ window.SkillNestComponents = (() => {
       || (brief.isValidProject && missingInfo.length === 0)
       || requiredBriefFieldsComplete(brief)
     );
+  }
+
+  function shouldShowFinalReview(brief = {}, activeIndex = 0) {
+    if (localStorage.getItem("hatchFinalReviewDismissed") === "true") return false;
+    return briefReadyForReview(brief, activeIndex);
   }
 
   function sectionSummary(brief, section) {
@@ -949,7 +956,7 @@ window.SkillNestComponents = (() => {
         <div class="focused-actions">
           <button class="btn primary" type="button" onclick="SkillNestApp.submitReviewedHatch()">Submit Hatch</button>
           <button class="btn secondary" type="button" onclick="SkillNestApp.toggleFinalEditList()">Edit brief</button>
-          <button class="btn ghost" type="button" onclick="SkillNestApp.continueChattingFromFinal()">Continue chatting</button>
+          <button class="btn ghost" type="button" onclick="SkillNestApp.continueChattingFromFinal()">Back to chat</button>
           <button class="btn ghost" type="button" onclick="SkillNestApp.saveHatchDraft()">Save draft</button>
         </div>
         ${showEditor ? `
@@ -1144,7 +1151,7 @@ window.SkillNestComponents = (() => {
       : [{ role: "assistant", text: fallbackAssistantMessage(brief) }];
     const aiError = localStorage.getItem("hatchAiLastError") || "";
     const activeIndex = Math.min(Number(localStorage.getItem("hatchActiveSectionIndex") || 0), builderSections.length);
-    const ready = shouldShowFinalReview(brief, activeIndex);
+    const ready = briefReadyForReview(brief, activeIndex);
     const processing = Boolean(brief?.isProcessing);
     // "Thinking" covers both the first-run processing brief and any in-flight
     // refine turn (flagged in localStorage), so the animated bubble shows while
@@ -1154,7 +1161,6 @@ window.SkillNestComponents = (() => {
     const placeholder = invalid ? "Tell Hatch what you want to build or get done..." : "Reply to Hatch...";
     const contextualSuggestions = !thinking && !ready && !invalid && question?.suggestions?.length ? question.suggestions : [];
     const files = readLocalJson("skillnestDraftFiles", []);
-    const completed = readLocalJson("hatchCompletedSections", []);
     const activeSectionId = builderSections[activeIndex]?.id || "";
     const showFileTools = !thinking && !ready && !invalid && activeSectionId === "references";
     const debugState = window.HatchAIController?.getState?.() || {};
@@ -1182,20 +1188,23 @@ window.SkillNestComponents = (() => {
             </article>
           ` : ""}
         </div>
-        ${ready ? finalReviewMarkup(brief, files, completed) : ""}
         ${showFileTools ? referenceAttachmentMarkup(files, contextualSuggestions) : ""}
-        ${!thinking && !ready && !showFileTools ? composeFileChipsMarkup(files) : ""}
+        ${!thinking && !showFileTools ? composeFileChipsMarkup(files) : ""}
         ${contextualSuggestions.length && !showFileTools ? `<div class="assistant-suggestions" aria-label="Suggested replies">
           <small>Reply naturally, or choose one below.</small>
           ${contextualSuggestions.map((item) => `<button class="choice-chip" type="button" onclick="SkillNestApp.sendAssistantReply(decodeURIComponent('${encodeURIComponent(item)}'))">${escapeHtml(item)}</button>`).join("")}
         </div>` : ""}
-        ${thinking || ready ? "" : `
+        ${thinking ? "" : `
           <div class="assistant-compose">
             ${attachMenuMarkup()}
             <input id="assistantReply" type="text" placeholder="${escapeHtml(placeholder)}" onkeydown="SkillNestApp.handleAssistantReplyKey(event)" />
             <button class="btn primary small" type="button" onclick="SkillNestApp.sendAssistantReply()">Send</button>
           </div>
           <input id="composeAttachFile" class="hidden-file" type="file" multiple onchange="SkillNestApp.handleTaskFiles(event)" />
+          <div class="review-post-panel">
+            ${ready ? `<p class="review-ready-note">${escapeHtml(ASSISTANT_LABEL)} thinks this Hatch is ready. Look it over, then post it for Hatchers.</p>` : ""}
+            <button class="btn primary full review-post-cta" type="button" ${ready ? "" : "disabled"} onclick="SkillNestApp.openHatchReview()">Review and Post</button>
+          </div>
           <p class="assistant-input-hint">Type freely — Hatch will organize it.</p>
           <p class="inline-error" id="assistantInputError">Type a message before sending.</p>
         `}
@@ -2069,7 +2078,9 @@ window.SkillNestComponents = (() => {
     field,
     footer,
     assistantConversationMarkup,
+    briefReadyForReview,
     fallbackAssistantMessage,
+    finalReviewMarkup,
     generateTaskBrief,
     hero,
     hatchLifecycleSection,

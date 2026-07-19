@@ -3276,6 +3276,12 @@ window.SkillNestApp = (() => {
     }
   }
 
+  function openHatchReview() {
+    const brief = getGeneratedBrief();
+    if (!brief?.ok) return;
+    setRoute("hatch-review");
+  }
+
   function confirmTaskReview() {
     const brief = getGeneratedBrief();
     const reviewedText = brief?.sourceText || localStorage.getItem("skillnestDraftTask") || "";
@@ -3373,7 +3379,10 @@ window.SkillNestApp = (() => {
         readiness: "Almost Ready",
         nextQuestion: { key: qualityIssues[0], prompt: message, suggestions: [], placeholder: "Reply to Hatch" },
       }));
-      render();
+      // The follow-up question lives in the chat; leave the review page if
+      // that's where the submit came from.
+      if (currentRoute() === "task-review") render();
+      else setRoute("task-review");
       return;
     }
     if (!isLoggedIn()) {
@@ -3433,7 +3442,10 @@ window.SkillNestApp = (() => {
     };
     localStorage.setItem("skillnestGeneratedBrief", JSON.stringify(nextBrief));
     saveAssistantMessages([...getAssistantMessages(), ...assistantMessageEntries(nextBrief.assistantMessage)]);
-    render();
+    // May be invoked from the hatch-review page; same-hash setRoute won't fire
+    // a hashchange render, so render in place when already on the chat.
+    if (currentRoute() === "task-review") render();
+    else setRoute("task-review");
   }
 
   function toggleFinalEditList() {
@@ -3447,6 +3459,8 @@ window.SkillNestApp = (() => {
     localStorage.setItem("hatchReturnToFinalReview", "true");
     localStorage.setItem("hatchShowFinalEditSections", "false");
     editSection(sectionId);
+    // The focused section editor lives on the chat page.
+    if (currentRoute() !== "task-review") setRoute("task-review");
   }
 
   function clearTaskDraft(options = {}) {
@@ -4590,6 +4604,8 @@ window.SkillNestApp = (() => {
         ? Pages.signupPage()
       : route === "task-review"
         ? Pages.taskReviewPage(draftTask, files, generatedBrief, getAssistantMessages())
+      : route === "hatch-review"
+        ? Pages.hatchReviewPage(files, generatedBrief)
       : route === "operator"
         ? Pages.operatorPage(account, getOperatorWizard(), isLoggedIn())
       : route === "how-it-works"
@@ -4666,6 +4682,7 @@ window.SkillNestApp = (() => {
     updateHatcherApplication,
     attachResume,
     removeResume,
+    openHatchReview,
     openOperatorProfile,
     openTaskDetail,
     openVerifiedHatcherProfile,
