@@ -2361,12 +2361,19 @@ window.SkillNestApp = (() => {
     console.log("[Hatch Bug] nextQuestion:", result.next_question || result.nextQuestion || "");
     console.log("[Hatch Bug] missingInfo:", result.missing_info || result.missingInfo || result.missing_fields || []);
 
-    let normalizedBrief = mergeResolvedAnswer(normalizeProjectBrief(result.brief || result, { mode: "clarify", brief }), resolution);
+    // Normalize the full response: `result.brief` is only the nested template
+    // summary (project_title, goal, ...) and carries no assistant_message or
+    // next_question — normalizing it instead of the whole response replays the
+    // previous turn's message and trips the duplicate detector every turn.
+    let normalizedBrief = mergeResolvedAnswer(normalizeProjectBrief(result, { mode: "clarify", brief }), resolution);
     let assistantText = result.assistantMessage || result.assistant_message || normalizedBrief.assistantMessage || C.fallbackAssistantMessage(normalizedBrief);
     const previousAssistantText = state.previous_assistant_message || "";
     let duplicateBlocked = false;
-    const nextQuestionText = result.next_question || result.nextQuestion || normalizedBrief.nextQuestion?.prompt || "";
-    const duplicateQuestion = answeredCurrentTurn && isSameQuestion(state.active_question, nextQuestionText);
+    // Only the question the AI itself returned counts for duplicate detection.
+    // When it omits next_question, normalizedBrief keeps the previous question,
+    // and comparing that against itself is a guaranteed false positive.
+    const nextQuestionText = result.next_question || result.nextQuestion || "";
+    const duplicateQuestion = answeredCurrentTurn && Boolean(nextQuestionText) && isSameQuestion(state.active_question, nextQuestionText);
     const duplicateMessage = isDuplicateAssistantMessage(previousAssistantText, assistantText);
     if (duplicateQuestion || duplicateMessage) {
       duplicateBlocked = true;
@@ -2393,10 +2400,10 @@ window.SkillNestApp = (() => {
         duplicateRetry: true,
       });
       console.log("[Hatch Bug] DeepSeek retry parsed:", result);
-      normalizedBrief = mergeResolvedAnswer(normalizeProjectBrief(result.brief || result, { mode: "clarify", brief }), resolution);
+      normalizedBrief = mergeResolvedAnswer(normalizeProjectBrief(result, { mode: "clarify", brief }), resolution);
       assistantText = result.assistantMessage || result.assistant_message || normalizedBrief.assistantMessage || C.fallbackAssistantMessage(normalizedBrief);
-      const retryQuestionText = result.next_question || result.nextQuestion || normalizedBrief.nextQuestion?.prompt || "";
-      if ((answeredCurrentTurn && isSameQuestion(state.active_question, retryQuestionText)) || isDuplicateAssistantMessage(previousAssistantText, assistantText)) {
+      const retryQuestionText = result.next_question || result.nextQuestion || "";
+      if ((answeredCurrentTurn && Boolean(retryQuestionText) && isSameQuestion(state.active_question, retryQuestionText)) || isDuplicateAssistantMessage(previousAssistantText, assistantText)) {
         const recovered = applyAnsweredQuestionLocally(brief, state, answer);
         if (recovered) {
           localStorage.setItem("hatchAiIntakeMode", "local-fallback");
