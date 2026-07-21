@@ -69,7 +69,7 @@ window.SkillNestPages = (() => {
           <div class="hatch-review-empty">
             <h1>Nothing to review yet.</h1>
             <p>Describe your Hatch first — once it’s shaped, you can review and post it here.</p>
-            <a class="btn primary" href="#post-task">Start a Hatch</a>
+            <a class="btn primary" href="#create-hatch">Start a Hatch</a>
           </div>
         </main>
       `;
@@ -260,35 +260,27 @@ window.SkillNestPages = (() => {
     `;
   }
 
-  function postTaskPage(account, draftTask, generatedBrief) {
-    const brief = generatedBrief?.ok ? generatedBrief : null;
+  // The single, canonical "create a Hatch" entry point. Same AI-intake composer
+  // as the homepage hero, but on a focused page — so "Post a Hatch" from the
+  // profile, footer, or post-login lands the user straight in the Chickie flow
+  // instead of a separate dropdown form.
+  function createHatchPage(account, draftTask, files = []) {
     return `
       <main class="section page">
-        <div class="form-layout">
-          <div class="form-copy">
-            <div class="section-label">Post Task</div>
-            <h1>Post your project.</h1>
-            <p>Keep it simple. Hatch uses the details to match the right Hatchers.</p>
-            <div class="account-note">
-              <span>Posting as</span>
-              <strong>${C.escapeHtml(account.name || account.username || "Your account")}</strong>
-              <p>${C.escapeHtml(account.email || "")}</p>
-            </div>
+        <div class="create-hatch-layout">
+          <div class="form-copy create-hatch-head">
+            <div class="section-label">New Hatch</div>
+            <h1>Start a Hatch.</h1>
+            <p>Describe what you need in your own words. Chickie will organize it into a clear brief and walk you to a postable Hatch.</p>
+            ${account?.email ? `
+              <div class="account-note">
+                <span>Posting as</span>
+                <strong>${C.escapeHtml(account.name || account.username || "Your account")}</strong>
+                <p>${C.escapeHtml(account.email || "")}</p>
+              </div>
+            ` : ""}
           </div>
-          <form class="form-card" onsubmit="SkillNestApp.submitTask(event)">
-            <div class="form-grid">
-              ${C.field("Name", "clientName", "Your name", "text", { value: account.name || "", readonly: true })}
-              ${C.field("Email", "clientEmail", "you@example.com", "email", { value: account.email || "", readonly: true })}
-              ${C.field("Business type", "businessType", "Cafe, salon, online store...", "text", { value: brief?.businessType === "To be confirmed" ? "" : brief?.businessType || "" })}
-              ${C.selectField("Budget", "budgetRange", ["Under $100", "$100-300", "$300-1000", "$50 - $150", "$150 - $500", "$500 - $1,500", "$1,500+", "Flexible"], brief?.suggestedBudget || "")}
-              ${C.selectField("Deadline", "deadline", ["1-3 days", "3-7 days", "1-2 weeks", "2-4 weeks", "This week", "2 weeks", "This month", "Flexible"], brief?.suggestedTimeline || "")}
-              ${C.selectField("Category", "industry", ["Restaurant", "Retail", "Professional Services", "E-commerce", "Local Services", "Real Estate", "Education", "Operations", "Customer Support", "Website", "Content", "Design", "Other"], brief?.category || brief?.industry || "")}
-              ${C.textAreaField("Hatch description", "taskDetails", "Describe the business problem and the solution you want.", draftTask)}
-            </div>
-            <button class="btn primary full" type="submit">Post Task</button>
-            <div class="success" id="taskSuccess">Task posted. Recommended Hatchers are ready below.</div>
-            <div id="recommendedOperators"></div>
-          </form>
+          ${C.taskComposer(draftTask, files)}
         </div>
       </main>
     `;
@@ -502,7 +494,7 @@ window.SkillNestPages = (() => {
             <p>${C.escapeHtml(account.email || "")}</p>
           </div>
           <div class="profile-actions">
-            <button class="btn secondary" type="button" onclick="SkillNestApp.setRoute('post-task')">Post a Hatch</button>
+            <button class="btn secondary" type="button" onclick="SkillNestApp.setRoute('create-hatch')">Post a Hatch</button>
             <button class="btn secondary" type="button" onclick="SkillNestApp.setRoute('browse')">Browse Hatches</button>
             <button class="btn ghost" type="button" onclick="SkillNestApp.logout()">Log out</button>
           </div>
@@ -528,7 +520,7 @@ window.SkillNestPages = (() => {
           <section class="profile-card wide">
             <div class="card-title-row">
               <h2>My Hatches</h2>
-              <button class="btn secondary small" type="button" onclick="SkillNestApp.setRoute('post-task')">New Hatch</button>
+              <button class="btn secondary small" type="button" onclick="SkillNestApp.setRoute('create-hatch')">New Hatch</button>
             </div>
             ${miniTaskList(postedTasks, "Hatches you post will appear here.", { removable: true, type: "posted" })}
           </section>
@@ -742,7 +734,7 @@ window.SkillNestPages = (() => {
     howItWorksPage,
     operatorPage,
     hatchReviewPage,
-    postTaskPage,
+    createHatchPage,
     profilePage,
     signupPage,
     taskReviewPage,

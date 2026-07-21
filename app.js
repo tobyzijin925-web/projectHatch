@@ -705,7 +705,7 @@ window.SkillNestApp = (() => {
   function accountRoute(account = getAccount()) {
     if (account.role === "Operator" || account.role === "AI Builder" || account.role === "Hatcher") return "operator";
     if (account.role === "Client and operator" || account.role === "Client and AI Builder" || account.role === "Client and Hatcher") return "profile";
-    return "post-task";
+    return "create-hatch";
   }
 
   function setTaskError(message) {
@@ -3282,13 +3282,6 @@ window.SkillNestApp = (() => {
     setRoute("hatch-review");
   }
 
-  function confirmTaskReview() {
-    const brief = getGeneratedBrief();
-    const reviewedText = brief?.sourceText || localStorage.getItem("skillnestDraftTask") || "";
-    localStorage.setItem("skillnestDraftTask", reviewedText);
-    setRoute(isLoggedIn() ? "post-task" : "auth");
-  }
-
   function reviewedBriefToPostedTask(brief) {
     const files = readJson("skillnestDraftFiles", []);
     const industry = brief.industry || brief.businessType || "General";
@@ -4038,43 +4031,6 @@ window.SkillNestApp = (() => {
     render();
   }
 
-  function submitTask(event) {
-    event.preventDefault();
-    const industry = document.getElementById("industry").value;
-    const generatedBrief = getGeneratedBrief();
-    const taskDescription = document.getElementById("taskDetails").value.trim();
-    const postedTask = {
-      id: `posted-${Date.now()}`,
-      title: generatedBrief?.title || taskDescription || "Untitled Hatch",
-      business: document.getElementById("businessType").value.trim(),
-      objective: taskDescription || generatedBrief?.summary || "Create a practical business solution.",
-      budget: document.getElementById("budgetRange").value,
-      deadline: document.getElementById("deadline").value,
-      timeline: document.getElementById("deadline").value,
-      estimatedCompletion: document.getElementById("deadline").value,
-      industry,
-      category: industry,
-      level: "L1",
-      status: "New Hatch",
-      createdAt: new Date().toISOString(),
-    };
-    saveListItem(postedTasksKey(), postedTask, "id");
-    // Mirror to the backend so other accounts can actually discover this Hatch
-    // (browse pulls open Hatches from the server — see refreshOpenHatches())
-    // and so lifecycle updates (claim/submit/review) reach real inboxes.
-    if (backendToken()) {
-      backendFetch("/api/hatches", { method: "POST", body: postedTask }).then((result) => {
-        if (!result?.ok) return;
-        saveListItem(postedTasksKey(), { ...postedTask, backendId: result.hatch.id }, "id");
-      });
-    }
-    localStorage.removeItem("skillnestDraftTask");
-    localStorage.removeItem("skillnestGeneratedBrief");
-    document.getElementById("taskSuccess")?.classList.add("show");
-    const recommendations = document.getElementById("recommendedOperators");
-    if (recommendations) recommendations.innerHTML = C.recommendedOperators(industry);
-  }
-
   function getOperatorWizard() {
     return {
       step: localStorage.getItem("hatchOperatorStep") || "account",
@@ -4596,8 +4552,8 @@ window.SkillNestApp = (() => {
     const files = readJson("skillnestDraftFiles", []);
     const draftTask = localStorage.getItem("skillnestDraftTask") || "";
     const generatedBrief = getGeneratedBrief();
-    const page = route === "post-task"
-      ? (isLoggedIn() ? Pages.postTaskPage(account, draftTask, generatedBrief) : Pages.authPage())
+    const page = (route === "create-hatch" || route === "post-task")
+      ? Pages.createHatchPage(account, draftTask, files)
       : route === "auth"
         ? Pages.authPage()
       : route === "signup"
@@ -4656,7 +4612,6 @@ window.SkillNestApp = (() => {
     completeLogin,
     completeReferenceFiles,
     completeSignup,
-    confirmTaskReview,
     confirmSection,
     continueChattingFromFinal,
     addCustomChoice,
@@ -4718,7 +4673,6 @@ window.SkillNestApp = (() => {
     startTaskFlow,
     submitOperator,
     submitReviewedHatch,
-    submitTask,
     sendAssistantReply,
     testDeepSeekConnection,
     moveToNextSection,

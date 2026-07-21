@@ -3096,6 +3096,23 @@ dd {
   text-align: center;
 }
 
+/* Dedicated "Start a Hatch" intake page (#create-hatch) — the single creation
+   entry point. Reuses the hero's .task-box composer inside a focused layout. */
+.create-hatch-layout {
+  max-width: 720px;
+  margin: 0 auto;
+  display: grid;
+  gap: 20px;
+}
+
+.create-hatch-head h1 {
+  margin: 6px 0 8px;
+}
+
+.create-hatch-layout .task-box {
+  margin: 0;
+}
+
 .final-review-head {
   display: grid;
   gap: 8px;

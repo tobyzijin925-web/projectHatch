@@ -1350,37 +1350,50 @@ window.SkillNestComponents = (() => {
             </button>
             <p class="hero-subtitle">Tell us everything.<br />Don’t worry about making it perfect.<br />Just explain your situation naturally, as if you were talking to a colleague.<br />The more context you give us, the better we can understand your project. Hatch will organize everything for you.</p>
           </div>
-          <div class="task-box reveal">
-            <label for="taskPrompt">Project description</label>
-            <textarea id="taskPrompt" rows="6" placeholder="Explain what you’re trying to accomplish, what you already have, and what a good result would look like..." oninput="SkillNestApp.updateLiveTaskPreview()">${escapeHtml(draftText)}</textarea>
-            <div class="inline-error" id="taskPromptError">Describe the Hatch first, even with one short sentence.</div>
-            <div class="input-tools" aria-label="Task input options">
-              <button class="tool-button voice-button" id="voiceInputButton" type="button" onclick="SkillNestApp.toggleVoiceInput()">Voice input</button>
-              <button class="tool-button voice-control hidden" id="voicePauseButton" type="button" onclick="SkillNestApp.pauseVoiceInput()">Pause</button>
-              <button class="tool-button voice-control hidden" id="voiceStopButton" type="button" onclick="SkillNestApp.stopVoiceInput()">Stop</button>
-              <button class="tool-button voice-control hidden danger-tool" id="voiceDeleteButton" type="button" onclick="SkillNestApp.deleteVoiceTranscript()">Delete voice text</button>
-              <button class="tool-button" type="button" onclick="document.getElementById('taskFile').click()">Attach files</button>
-              <input id="taskFile" class="hidden-file" type="file" multiple onchange="SkillNestApp.handleTaskFiles(event)" />
-            </div>
-            <div class="voice-status show" id="voiceStatus" role="status">Your microphone is only used while recording.</div>
-            <div class="file-summary" id="fileSummary"></div>
-            <div class="file-preview-list" id="filePreviewList" data-file-preview></div>
-            <div class="hero-actions">
-              <button class="btn primary full" id="reviewTaskButton" type="button" onclick="SkillNestApp.startTaskFlow()">Continue</button>
-              <button class="btn secondary full" type="button" onclick="SkillNestApp.setRoute('browse')">Browse Hatches</button>
-            </div>
-            <div class="writing-prompts">
-              <strong>Helpful things to mention:</strong>
-              <span>What you’re trying to achieve</span>
-              <span>Your business or project</span>
-              <span>What you already have</span>
-              <span>What success looks like</span>
-              <span>Deadlines</span>
-              <span>References</span>
-            </div>
-          </div>
+          ${taskComposer(draftText, files)}
         </div>
       </section>
+    `;
+  }
+
+  // The AI-intake project box: a description field, voice/file tools, and the
+  // "Continue" button that launches the Chickie chat via startTaskFlow(). Shared
+  // by the homepage hero and the dedicated "Start a Hatch" page so both entry
+  // points feed the exact same AI flow — there is only one way to create a Hatch.
+  function taskComposer(draftText = "", files = [], options = {}) {
+    const secondaryAction = options.secondaryAction === false
+      ? ""
+      : `<button class="btn secondary full" type="button" onclick="SkillNestApp.setRoute('browse')">Browse Hatches</button>`;
+    return `
+      <div class="task-box reveal">
+        <label for="taskPrompt">Project description</label>
+        <textarea id="taskPrompt" rows="6" placeholder="Explain what you’re trying to accomplish, what you already have, and what a good result would look like..." oninput="SkillNestApp.updateLiveTaskPreview()">${escapeHtml(draftText)}</textarea>
+        <div class="inline-error" id="taskPromptError">Describe the Hatch first, even with one short sentence.</div>
+        <div class="input-tools" aria-label="Task input options">
+          <button class="tool-button voice-button" id="voiceInputButton" type="button" onclick="SkillNestApp.toggleVoiceInput()">Voice input</button>
+          <button class="tool-button voice-control hidden" id="voicePauseButton" type="button" onclick="SkillNestApp.pauseVoiceInput()">Pause</button>
+          <button class="tool-button voice-control hidden" id="voiceStopButton" type="button" onclick="SkillNestApp.stopVoiceInput()">Stop</button>
+          <button class="tool-button voice-control hidden danger-tool" id="voiceDeleteButton" type="button" onclick="SkillNestApp.deleteVoiceTranscript()">Delete voice text</button>
+          <button class="tool-button" type="button" onclick="document.getElementById('taskFile').click()">Attach files</button>
+          <input id="taskFile" class="hidden-file" type="file" multiple onchange="SkillNestApp.handleTaskFiles(event)" />
+        </div>
+        <div class="voice-status show" id="voiceStatus" role="status">Your microphone is only used while recording.</div>
+        <div class="file-summary" id="fileSummary"></div>
+        <div class="file-preview-list" id="filePreviewList" data-file-preview></div>
+        <div class="hero-actions">
+          <button class="btn primary full" id="reviewTaskButton" type="button" onclick="SkillNestApp.startTaskFlow()">Continue</button>
+          ${secondaryAction}
+        </div>
+        <div class="writing-prompts">
+          <strong>Helpful things to mention:</strong>
+          <span>What you’re trying to achieve</span>
+          <span>Your business or project</span>
+          <span>What you already have</span>
+          <span>What success looks like</span>
+          <span>Deadlines</span>
+          <span>References</span>
+        </div>
+      </div>
     `;
   }
 
@@ -2059,7 +2072,7 @@ window.SkillNestComponents = (() => {
                 </span>
               </span>
             </button>
-            <a href="#post-task">Post a Hatch</a>
+            <a href="#create-hatch">Post a Hatch</a>
             <a href="#browse">Browse Hatches</a>
             <a href="#verified-work">Verified Results</a>
             ${hatcherLink}
@@ -2083,6 +2096,7 @@ window.SkillNestComponents = (() => {
     finalReviewMarkup,
     generateTaskBrief,
     hero,
+    taskComposer,
     hatchLifecycleSection,
     whyHatchSection,
     clarificationCardMarkup,
