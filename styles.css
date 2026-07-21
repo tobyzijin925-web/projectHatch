@@ -4614,6 +4614,173 @@ dd {
   box-shadow: 0 1px 3px rgba(var(--tint-rgb), 0.16);
 }
 
+/* ── Content-language: settings blocks, browse filter, card badges ───────── */
+.settings-language-block {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.settings-subhead {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  font-weight: 750;
+  color: var(--ink);
+}
+
+.settings-language-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.settings-language-row .muted-text {
+  margin: 0;
+  max-width: 44ch;
+}
+
+.settings-language-handling {
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.settings-language-handling .filter-options {
+  margin: 12px 0 10px;
+}
+
+.filter-subheading {
+  margin-top: 16px;
+}
+
+.filter-radio {
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.filter-radio-label {
+  display: block;
+  font-weight: 650;
+}
+
+.filter-radio-hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.filter-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+/* Language provenance on a Hatch card. The translated variant is a button —
+   it reveals the source text — so it gets an interactive affordance; the
+   plain "this Hatch is in X" variant is a static span. */
+.task-language-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-top: 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--neutral-pill-bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+button.task-language-badge {
+  cursor: pointer;
+  transition: border-color 0.16s ease, color 0.16s ease;
+}
+
+button.task-language-badge:hover {
+  border-color: var(--accent);
+  color: var(--text-strong);
+}
+
+.task-language-badge.translated {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent-dark);
+}
+
+.task-language-badge.pending {
+  opacity: 0.75;
+}
+
+.task-language-toggle {
+  padding-left: 6px;
+  border-left: 1px solid currentColor;
+  opacity: 0.75;
+  font-weight: 700;
+}
+
+.task-original {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--line);
+  background: rgba(var(--tint-rgb), 0.03);
+  border-radius: 0 10px 10px 0;
+}
+
+.task-original h4 {
+  margin: 0 0 4px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.task-original p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+/* Signup: language preference fieldset. */
+.signup-language {
+  margin: 4px 0 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(var(--tint-rgb), 0.02);
+}
+
+.signup-language legend {
+  padding: 0 8px;
+  font-size: 0.82rem;
+  font-weight: 750;
+  color: var(--text-strong);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.signup-language-intro {
+  margin: 0 0 14px;
+}
+
+.signup-language-handling {
+  margin-top: 14px;
+}
+
+.field-legend {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
 /* Animated day/night switch: the thumb slides across the track while the sun
    and moon icons cross-fade. Light mode = sun/left, dark mode = moon/right. */
 .theme-switch {

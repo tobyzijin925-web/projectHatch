@@ -1645,20 +1645,74 @@ window.SkillNestComponents = (() => {
     `;
   }
 
+  // A Hatch written in another language renders one of three ways, per the
+  // reader's content-language preference: machine-translated (with a badge back
+  // to the original), left as written with a language badge, or filtered out
+  // entirely by applyTaskFilters. Translation is resolved from cache here so a
+  // seen-before Hatch paints translated on the first frame; uncached ones get
+  // marked for the async hydration pass in app.js.
+  function taskLanguageState(task) {
+    const I18n = window.HatchI18n;
+    if (!I18n) return { source: "en", display: task, translated: false, pending: false };
+    const { contentLanguage, foreignHatches } = I18n.getPrefs();
+    const source = I18n.taskLanguage(task);
+    if (source === contentLanguage) return { source, display: task, translated: false, pending: false };
+    if (foreignHatches !== "translate") return { source, display: task, translated: false, pending: false };
+
+    const cached = window.HatchTranslate?.getCached(task, contentLanguage);
+    if (cached) {
+      return { source, display: window.HatchTranslate.merge(task, cached), translated: true, pending: false };
+    }
+    return { source, display: task, translated: false, pending: true };
+  }
+
+  function languageBadge(state) {
+    const I18n = window.HatchI18n;
+    if (!I18n) return "";
+    const sourceName = I18n.languageOf(state.source).native;
+    if (state.translated) {
+      return `
+        <button class="task-language-badge translated" type="button" onclick="event.stopPropagation(); SkillNestApp.toggleTaskOriginal(event)">
+          <span aria-hidden="true">🌐</span>
+          <span data-i18n-source="${escapeHtml(sourceName)}">Translated from ${escapeHtml(sourceName)}</span>
+          <span class="task-language-toggle">View original</span>
+        </button>
+      `;
+    }
+    if (state.pending) {
+      return `<span class="task-language-badge pending"><span aria-hidden="true">🌐</span><span>Translating…</span></span>`;
+    }
+    return `<span class="task-language-badge"><span aria-hidden="true">🌐</span><span>${escapeHtml(sourceName)}</span></span>`;
+  }
+
   function taskCard(task, interactive = false) {
-    const status = statusInfo(task.status);
+    const state = taskLanguageState(task);
+    const shown = state.display;
+    const status = statusInfo(shown.status);
     const isOpen = status.label === "New Hatch";
-    const category = task.category || task.industry;
-    const completion = task.estimatedCompletion || task.timeline;
-    const objective = task.objective || task.description;
+    const category = shown.category || shown.industry;
+    const completion = shown.estimatedCompletion || shown.timeline;
+    const objective = shown.objective || shown.description;
+    const foreign = state.source !== (window.HatchI18n?.getPrefs().contentLanguage || "en");
+    // Search matches against both the original and translated text, so a query
+    // in either language finds the Hatch regardless of how it is displayed.
+    const searchable = `${shown.title} ${shown.business} ${shown.industry} ${category} ${shown.status}`
+      + (state.translated ? ` ${task.title} ${task.business}` : "");
     return `
-      <article class="task-card status-${status.className}" data-task-id="${task.id}" data-level="${task.level}" data-level-num="${levelSortValue(task.level)}" data-price="${budgetSortValue(task.budget)}" data-days="${completionSortValue(completion)}" data-industry="${escapeHtml(task.industry)}" data-search="${escapeHtml(`${task.title} ${task.business} ${task.industry} ${category} ${task.status}`)}" onclick="SkillNestApp.openTaskDetail('${task.id}')">
+      <article class="task-card status-${status.className}" data-task-id="${task.id}" data-level="${task.level}" data-level-num="${levelSortValue(task.level)}" data-price="${budgetSortValue(task.budget)}" data-days="${completionSortValue(completion)}" data-industry="${escapeHtml(task.industry)}" data-language="${escapeHtml(state.source)}" ${state.pending ? 'data-needs-translation="1"' : ""} data-interactive="${interactive ? "1" : "0"}" data-search="${escapeHtml(searchable)}" onclick="SkillNestApp.openTaskDetail('${task.id}')">
         <div class="card-top">
           <span class="level-ribbon">${task.level}</span>
-          ${statusBadge(task.status)}
+          ${statusBadge(shown.status)}
         </div>
-        <h3>${escapeHtml(task.title)}</h3>
+        <h3>${escapeHtml(shown.title)}</h3>
         <p class="task-objective">${escapeHtml(objective)}</p>
+        ${foreign ? languageBadge(state) : ""}
+        ${state.translated ? `
+          <div class="task-original" hidden>
+            <h4>${escapeHtml(task.title)}</h4>
+            <p>${escapeHtml(task.objective || task.description || "")}</p>
+          </div>
+        ` : ""}
         <div class="task-card-footer">
           <strong class="task-budget">${escapeHtml(task.budget)}</strong>
           <div class="task-meta-row">
@@ -2337,7 +2391,9 @@ window.SkillNestComponents = (() => {
     field,
     footer,
     formatMessageTime,
+    languageBadge,
     languagePicker,
+    taskLanguageState,
     messageBubble,
     newMessageModal,
     systemAvatar,

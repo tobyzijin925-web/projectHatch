@@ -67,6 +67,104 @@ window.SkillNestApp = (() => {
     render();
   }
 
+  // Content-language preferences live in one place (HatchI18n) and are mirrored
+  // onto the account so they survive a backend account refresh. The browse
+  // sidebar and the settings page both drive these same two setters, which is
+  // what keeps the filter and the account setting from drifting apart.
+  function persistContentPrefs(prefs) {
+    const account = getAccount();
+    if (!account.username) return;
+    localStorage.setItem("skillnestAccount", JSON.stringify({
+      ...account,
+      contentLanguage: prefs.contentLanguage,
+      foreignHatches: prefs.foreignHatches,
+    }));
+  }
+
+  function setContentLanguage(code) {
+    const prefs = window.HatchI18n?.setPrefs({ contentLanguage: code });
+    if (!prefs) return;
+    persistContentPrefs(prefs);
+    render();
+  }
+
+  function setForeignHatchHandling(mode) {
+    const prefs = window.HatchI18n?.setPrefs({ foreignHatches: mode });
+    if (!prefs) return;
+    persistContentPrefs(prefs);
+    render();
+  }
+
+  // Restore saved preferences onto a freshly-loaded account (new browser, or a
+  // backend session that just replaced the local copy).
+  function syncContentPrefsFromAccount() {
+    const account = getAccount();
+    if (!account.contentLanguage && !account.foreignHatches) return;
+    window.HatchI18n?.setPrefs({
+      ...(account.contentLanguage ? { contentLanguage: account.contentLanguage } : {}),
+      ...(account.foreignHatches ? { foreignHatches: account.foreignHatches } : {}),
+    });
+  }
+
+  // Cards whose translation wasn't cached at render time render in their
+  // original language with data-needs-translation, then get swapped in place
+  // once the API answers. Repainting one card at a time avoids a full render()
+  // that would fight with an open filter or a scrolled grid.
+  function hydrateTaskTranslations() {
+    const cards = [...document.querySelectorAll(".task-card[data-needs-translation]")];
+    if (!cards.length) return;
+    const target = window.HatchI18n?.getPrefs().contentLanguage;
+    if (!target || !window.HatchTranslate) return;
+
+    for (const card of cards) {
+      // Never pay for a translation the reader can't see. Filtered-out cards
+      // keep their marker and get picked up by the next hydration pass if a
+      // filter change brings them back into view.
+      if (card.hidden) continue;
+      const task = findAnyTask(card.dataset.taskId);
+      if (!task) continue;
+      card.removeAttribute("data-needs-translation");
+      window.HatchTranslate.translate(task, target).then((translation) => {
+        if (!translation) {
+          // Translation unavailable (offline, no API key, provider error). Keep
+          // the original text and downgrade the "Translating…" badge to the
+          // plain language badge, so the card still tells the reader what
+          // language it is in rather than silently looking untranslatable.
+          const live = document.querySelector(`.task-card[data-task-id="${CSS.escape(task.id)}"]`);
+          const badge = live?.querySelector(".task-language-badge.pending");
+          if (badge) {
+            badge.outerHTML = C.languageBadge({ source: card.dataset.language, translated: false, pending: false });
+            const fresh = live.querySelector(".task-language-badge");
+            if (fresh) window.HatchI18n?.apply(fresh);
+          }
+          return;
+        }
+        const live = document.querySelector(`.task-card[data-task-id="${CSS.escape(task.id)}"]`);
+        if (!live) return;
+        const wasHidden = live.hidden;
+        const order = live.dataset.order;
+        live.outerHTML = C.taskCard(task, live.dataset.interactive === "1");
+        const fresh = document.querySelector(`.task-card[data-task-id="${CSS.escape(task.id)}"]`);
+        if (fresh) {
+          fresh.hidden = wasHidden;
+          if (order !== undefined) fresh.dataset.order = order;
+          window.HatchI18n?.apply(fresh);
+        }
+      });
+    }
+  }
+
+  // Expand a translated card to show the source text underneath.
+  function toggleTaskOriginal(event) {
+    const card = event.currentTarget.closest(".task-card");
+    const original = card?.querySelector(".task-original");
+    if (!original) return;
+    const showing = original.hidden;
+    original.hidden = !showing;
+    const toggle = event.currentTarget.querySelector(".task-language-toggle");
+    if (toggle) toggle.textContent = window.HatchI18n?.t(showing ? "Hide original" : "View original") || (showing ? "Hide original" : "View original");
+  }
+
   function readJson(key, fallback) {
     try {
       return JSON.parse(localStorage.getItem(key)) || fallback;
@@ -3315,6 +3413,10 @@ window.SkillNestApp = (() => {
     const industry = brief.industry || brief.businessType || "General";
     return {
       id: `hatch-${Date.now()}`,
+      // Stamp the language the client actually wrote in, sniffed from the brief
+      // rather than assumed from their UI language — a Chinese-interface user
+      // can still write their Hatch in English.
+      language: window.HatchI18n?.detectLanguage(brief.title, brief.summary, brief.businessType) || "en",
       title: brief.title || "New Hatch",
       business: brief.businessType || industry,
       clientContext: brief.clientContext || brief.businessType || industry,
@@ -3563,6 +3665,18 @@ window.SkillNestApp = (() => {
       role: document.getElementById("authRole").value,
       joinedAt: new Date().toISOString(),
     };
+
+    // Language preferences chosen during setup, stored on the account so they
+    // follow the user rather than the device.
+    const prefs = window.HatchI18n?.setPrefs({
+      contentLanguage: document.getElementById("authLanguage")?.value,
+      foreignHatches: document.querySelector('input[name="authForeignHatches"]:checked')?.value,
+    });
+    if (prefs) {
+      account.contentLanguage = prefs.contentLanguage;
+      account.foreignHatches = prefs.foreignHatches;
+    }
+
     localStorage.setItem("skillnestAccount", JSON.stringify(account));
 
     let result = await backendFetch("/api/auth/signup", {
@@ -3703,12 +3817,18 @@ window.SkillNestApp = (() => {
     );
     ordered.forEach((card) => grid.appendChild(card));
 
+    // "Hide them" is the only handling mode that filters; translate/original
+    // both keep foreign Hatches in the grid and differ only in presentation.
+    const prefs = window.HatchI18n?.getPrefs() || {};
+    const hideForeign = prefs.foreignHatches === "hide";
+
     let visibleCount = 0;
     cards.forEach((card) => {
       const isVisible =
         (!query || card.dataset.search.toLowerCase().includes(query)) &&
         (!levels.length || levels.includes(card.dataset.level)) &&
         (!industry || card.dataset.industry === industry) &&
+        (!hideForeign || card.dataset.language === prefs.contentLanguage) &&
         inRange(card.dataset.price, price) &&
         inRange(card.dataset.days, length);
       card.hidden = !isVisible;
@@ -3718,6 +3838,9 @@ window.SkillNestApp = (() => {
     document.getElementById("emptyTasks")?.classList.toggle("show", visibleCount === 0);
     const hint = document.getElementById("taskResultHint");
     if (hint) hint.textContent = `${visibleCount} ${visibleCount === 1 ? "Hatch" : "Hatches"}`;
+
+    // A loosened filter can reveal foreign Hatches that were skipped earlier.
+    hydrateTaskTranslations();
   }
 
   // Keeps a dual-thumb slider consistent: stops the thumbs crossing, repaints
@@ -4998,7 +5121,10 @@ window.SkillNestApp = (() => {
       scrollAssistantToLatest();
       animateAssistantTyping();
       startHeroTypewriter();
+      // Filters first, so hydration knows which cards are actually on screen
+      // and skips paying to translate ones the reader filtered away.
       if (route === "browse") applyTaskFilters();
+      hydrateTaskTranslations();
       if (route === "messages") {
         const thread = document.getElementById("threadBody");
         // Snap to the newest message on first open or when already reading
@@ -5079,6 +5205,10 @@ window.SkillNestApp = (() => {
     toggleProfileMenu,
     toggleLanguageMenu,
     chooseLanguage,
+    setContentLanguage,
+    setForeignHatchHandling,
+    toggleTaskOriginal,
+    syncContentPrefsFromAccount,
     toggleDarkModeFromMenu,
     handleAvatarFile,
     removeAvatar,
@@ -5116,6 +5246,7 @@ window.SkillNestApp = (() => {
 })();
 
 SkillNestApp.applyDarkModePreference();
+SkillNestApp.syncContentPrefsFromAccount();
 SkillNestApp.render();
 // Pick up server-side account changes (role upgrades, admin flag) at boot.
 window.setTimeout(() => SkillNestApp.refreshBackendAccount(), 300);

@@ -96,6 +96,55 @@ window.SkillNestPages = (() => {
     return `${C.escapeHtml(file.name)} (${C.escapeHtml(file.type || "file")} · ${size})`;
   }
 
+  // Language controls in the browse sidebar are a view onto the account's
+  // content-language preference, not a separate per-page filter — changing
+  // either one here writes straight back to the account, so the two stay in
+  // sync. Counts are shown so it is obvious what hiding a language costs.
+  function languageFilterMarkup(allTasks = []) {
+    const I18n = window.HatchI18n;
+    if (!I18n) return "";
+    const { contentLanguage, foreignHatches } = I18n.getPrefs();
+    const counts = allTasks.reduce((acc, task) => {
+      const code = I18n.taskLanguage(task);
+      acc[code] = (acc[code] || 0) + 1;
+      return acc;
+    }, {});
+    const foreignCount = allTasks.length - (counts[contentLanguage] || 0);
+
+    // Counts are kept out of the label text: an interpolated number would make
+    // the string a unique key the dictionary can never match, so it renders as
+    // a sibling node instead.
+    const options = [
+      ["translate", "Translate into my language", "Machine-translated, original always one click away", 0],
+      ["original", "Show as written", "No translation — Hatches stay in their own language", 0],
+      ["hide", "Hide them", "Only show Hatches already in my language", foreignCount],
+    ];
+
+    return `
+      <div class="filter-group language-filter">
+        <label class="filter-heading" for="contentLanguageFilter">My language</label>
+        <select id="contentLanguageFilter" onchange="SkillNestApp.setContentLanguage(this.value)">
+          ${I18n.languages().map((lang) => `
+            <option value="${lang.code}" ${lang.code === contentLanguage ? "selected" : ""}>${C.escapeHtml(lang.native)}${counts[lang.code] ? ` (${counts[lang.code]})` : ""}</option>
+          `).join("")}
+        </select>
+        <div class="filter-heading filter-subheading">Hatches in other languages</div>
+        <div class="filter-options">
+          ${options.map(([value, label, hint, count]) => `
+            <label class="filter-check filter-radio">
+              <input type="radio" name="foreignHatches" value="${value}" ${value === foreignHatches ? "checked" : ""} onchange="SkillNestApp.setForeignHatchHandling('${value}')" />
+              <span>
+                <span class="filter-radio-label">${C.escapeHtml(label)}${count ? `<span class="filter-radio-count"> (${count})</span>` : ""}</span>
+                <small class="filter-radio-hint">${C.escapeHtml(hint)}</small>
+              </span>
+            </label>
+          `).join("")}
+        </div>
+        <p class="filter-note">Saved to your account — this matches your Language setting.</p>
+      </div>
+    `;
+  }
+
   function browsePage(allTasks = tasks) {
     const uniqueLevels = [...new Set(allTasks.map((task) => task.level).filter(Boolean))]
       .sort((a, b) => C.completionSortValue(a) - C.completionSortValue(b) || String(a).localeCompare(String(b)));
@@ -147,6 +196,7 @@ window.SkillNestPages = (() => {
                 <div class="filter-heading">Length</div>
                 ${C.rangeFilterMarkup({ id: "lengthRange", min: dayMin, max: dayMax, format: "days" })}
               </div>
+              ${languageFilterMarkup(allTasks)}
               <div class="filter-group">
                 <label class="filter-heading" for="industryFilter">Industry</label>
                 <select id="industryFilter" onchange="SkillNestApp.applyTaskFilters()">
@@ -229,6 +279,52 @@ window.SkillNestPages = (() => {
     `;
   }
 
+  // Asked at signup rather than left to a default, because the answer changes
+  // what the catalog looks like the moment the account lands on Browse. Both
+  // fields are prefilled from whatever language the visitor is already reading
+  // the site in, so the common case is "leave it alone and submit".
+  function signupLanguageSection() {
+    const I18n = window.HatchI18n;
+    if (!I18n) return "";
+    const uiLang = I18n.getLang();
+    const { foreignHatches } = I18n.getPrefs();
+
+    const handlingOptions = [
+      ["translate", "Translate them for me", "Recommended — you see every Hatch, in your language"],
+      ["original", "Show them as written", "You read each Hatch in its original language"],
+      ["hide", "Hide them", "Only Hatches already in my language"],
+    ];
+
+    return `
+      <fieldset class="signup-language">
+        <legend>Language</legend>
+        <p class="form-note signup-language-intro">Pick the language you want to read Hatches in, and what should happen to Hatches posted in another language. You can change both later in account settings.</p>
+        <label class="field">
+          <span>My language</span>
+          <select id="authLanguage">
+            ${I18n.languages().map((lang) => `
+              <option value="${lang.code}" ${lang.code === uiLang ? "selected" : ""}>${C.escapeHtml(lang.native)}</option>
+            `).join("")}
+          </select>
+        </label>
+        <div class="signup-language-handling">
+          <span class="field-legend">Hatches in other languages</span>
+          <div class="filter-options">
+            ${handlingOptions.map(([value, label, hint]) => `
+              <label class="filter-check filter-radio">
+                <input type="radio" name="authForeignHatches" value="${value}" ${value === foreignHatches ? "checked" : ""} />
+                <span>
+                  <span class="filter-radio-label">${C.escapeHtml(label)}</span>
+                  <small class="filter-radio-hint">${C.escapeHtml(hint)}</small>
+                </span>
+              </label>
+            `).join("")}
+          </div>
+        </div>
+      </fieldset>
+    `;
+  }
+
   function signupPage() {
     return `
       <main class="section page auth-page">
@@ -248,6 +344,7 @@ window.SkillNestPages = (() => {
               ${C.field("Password", "authPassword", "Create a password", "password")}
               ${C.selectField("I am joining as", "authRole", ["Client", "Hatcher", "Client and Hatcher"])}
             </div>
+            ${signupLanguageSection()}
             <button class="btn primary full" type="submit">Create account</button>
             <div class="auth-switch">
               <span>Already have an account?</span>
@@ -760,6 +857,68 @@ window.SkillNestPages = (() => {
     `;
   }
 
+  // Two related but separate choices, deliberately shown together: the language
+  // Hatch's own interface speaks, and the language you want Hatches themselves
+  // in. Reading English Hatches through a Chinese interface is a real combo, so
+  // they are not collapsed into one control.
+  function languageSettingsCard() {
+    const I18n = window.HatchI18n;
+    if (!I18n) return "";
+    const uiLang = I18n.getLang();
+    const { contentLanguage, foreignHatches } = I18n.getPrefs();
+
+    const handlingOptions = [
+      ["translate", "Translate them into my language", "Hatch machine-translates the listing. The original is always one click away."],
+      ["original", "Show them as written", "No translation — you read every Hatch in its original language."],
+      ["hide", "Hide them", "Only show Hatches already written in my language."],
+    ];
+
+    return `
+      <section class="profile-card settings-card">
+        <h2>Language</h2>
+        <div class="settings-language-block">
+          <div class="settings-language-row">
+            <div>
+              <h3 class="settings-subhead">Interface</h3>
+              <p class="muted-text">The language Hatch's own buttons, labels, and pages use.</p>
+            </div>
+            <div class="language-switch" role="radiogroup" aria-label="Choose interface language">
+              ${I18n.languages().map((lang) => `
+                <button class="language-switch-option ${lang.code === uiLang ? "active" : ""}" type="button" role="radio" aria-checked="${lang.code === uiLang}" onclick="SkillNestApp.chooseLanguage('${lang.code}')">${C.escapeHtml(lang.native)}</button>
+              `).join("")}
+            </div>
+          </div>
+          <div class="settings-language-row">
+            <div>
+              <h3 class="settings-subhead">Hatches</h3>
+              <p class="muted-text">The language you want to read Hatches in.</p>
+            </div>
+            <div class="language-switch" role="radiogroup" aria-label="Choose Hatch language">
+              ${I18n.languages().map((lang) => `
+                <button class="language-switch-option ${lang.code === contentLanguage ? "active" : ""}" type="button" role="radio" aria-checked="${lang.code === contentLanguage}" onclick="SkillNestApp.setContentLanguage('${lang.code}')">${C.escapeHtml(lang.native)}</button>
+              `).join("")}
+            </div>
+          </div>
+          <div class="settings-language-handling">
+            <h3 class="settings-subhead">Hatches in other languages</h3>
+            <div class="filter-options">
+              ${handlingOptions.map(([value, label, hint]) => `
+                <label class="filter-check filter-radio">
+                  <input type="radio" name="settingsForeignHatches" value="${value}" ${value === foreignHatches ? "checked" : ""} onchange="SkillNestApp.setForeignHatchHandling('${value}')" />
+                  <span>
+                    <span class="filter-radio-label">${C.escapeHtml(label)}</span>
+                    <small class="filter-radio-hint">${C.escapeHtml(hint)}</small>
+                  </span>
+                </label>
+              `).join("")}
+            </div>
+            <p class="muted-text">This is the same setting as the language filter when you browse Hatches.</p>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
   function settingsPage(account) {
     const notice = localStorage.getItem("hatchSettingsNotice") || "";
     return `
@@ -791,17 +950,7 @@ window.SkillNestPages = (() => {
                 <button class="btn primary small" type="submit">Save</button>
               </form>
             </section>
-            <section class="profile-card settings-card">
-              <h2>Language</h2>
-              <div class="settings-language-row">
-                <p class="muted-text">Hatch's interface language. Your Hatches and messages stay as written.</p>
-                <div class="language-switch" role="radiogroup" aria-label="Choose language">
-                  ${(window.HatchI18n?.languages() || []).map((lang) => `
-                    <button class="language-switch-option ${lang.code === window.HatchI18n.getLang() ? "active" : ""}" type="button" role="radio" aria-checked="${lang.code === window.HatchI18n.getLang()}" onclick="SkillNestApp.chooseLanguage('${lang.code}')">${C.escapeHtml(lang.native)}</button>
-                  `).join("")}
-                </div>
-              </div>
-            </section>
+            ${languageSettingsCard()}
             <section class="profile-card settings-card">
               <h2>Account</h2>
               <dl class="application-summary">

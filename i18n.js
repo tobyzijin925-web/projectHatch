@@ -386,6 +386,36 @@ window.HatchI18n = (() => {
     "Choose language": "选择语言",
     "Change language": "切换语言",
     "Hatch's interface language. Your Hatches and messages stay as written.": "Hatch 的界面语言。你的 Hatch 内容和消息将保持原文。",
+    "Interface": "界面",
+    "The language Hatch's own buttons, labels, and pages use.": "Hatch 的按钮、标签和页面所使用的语言。",
+    "The language you want to read Hatches in.": "你希望以哪种语言阅读 Hatch。",
+    "Choose interface language": "选择界面语言",
+    "Choose Hatch language": "选择 Hatch 语言",
+    "My language": "我的语言",
+    "Hatches in other languages": "其他语言的 Hatch",
+    "Translate them into my language": "翻译成我的语言",
+    "Translate into my language": "翻译成我的语言",
+    "Translate them for me": "帮我翻译",
+    "Hatch machine-translates the listing. The original is always one click away.": "Hatch 会自动翻译该内容，原文始终一键可见。",
+    "Machine-translated, original always one click away": "机器翻译，原文一键可见",
+    "Recommended — you see every Hatch, in your language": "推荐 —— 用你的语言浏览全部 Hatch",
+    "Show them as written": "显示原文",
+    "Show as written": "显示原文",
+    "No translation — you read every Hatch in its original language.": "不翻译 —— 所有 Hatch 均以原语言显示。",
+    "No translation — Hatches stay in their own language": "不翻译 —— Hatch 保持原语言",
+    "You read each Hatch in its original language": "每个 Hatch 都以原语言阅读",
+    "Hide them": "隐藏",
+    "Only show Hatches already written in my language.": "仅显示已经是我的语言的 Hatch。",
+    "Only show Hatches already in my language": "仅显示已经是我的语言的 Hatch",
+    "Only Hatches already in my language": "仅显示已经是我的语言的 Hatch",
+    "This is the same setting as the language filter when you browse Hatches.": "此设置与浏览 Hatch 时的语言筛选为同一项。",
+    "Saved to your account — this matches your Language setting.": "已保存到你的账户 —— 与语言设置保持一致。",
+    "Pick the language you want to read Hatches in, and what should happen to Hatches posted in another language. You can change both later in account settings.": "选择你希望阅读 Hatch 的语言，以及其他语言的 Hatch 该如何处理。两项均可稍后在账户设置中修改。",
+    "View original": "查看原文",
+    "Hide original": "隐藏原文",
+    "Translating…": "翻译中…",
+    "Translated from English": "由英语翻译",
+    "Translated from 中文": "由中文翻译",
     // Language names are deliberately absent: each is always shown in its own
     // language ("English", "中文") so a user stuck in the wrong one can find
     // their way back.
@@ -520,7 +550,81 @@ window.HatchI18n = (() => {
     }
   }
 
+  // ── Content language ───────────────────────────────────────────────────────
+  // Distinct from the UI language above. This governs Hatches — which ones you
+  // see, and whether ones written in another language get machine-translated.
+  // The two are seeded together at signup but can diverge: reading Hatches in
+  // English while running a Chinese interface is a legitimate combination.
+  const PREFS_KEY = "hatchContentPrefs";
+  const HANDLING = ["translate", "original", "hide"];
+
+  function defaultPrefs() {
+    return { contentLanguage: current, foreignHatches: "translate" };
+  }
+
+  function getPrefs() {
+    let stored = {};
+    try {
+      stored = JSON.parse(localStorage.getItem(PREFS_KEY)) || {};
+    } catch {
+      stored = {};
+    }
+    const base = defaultPrefs();
+    return {
+      contentLanguage: LANGUAGES.some((l) => l.code === stored.contentLanguage)
+        ? stored.contentLanguage
+        : base.contentLanguage,
+      foreignHatches: HANDLING.includes(stored.foreignHatches)
+        ? stored.foreignHatches
+        : base.foreignHatches,
+    };
+  }
+
+  function setPrefs(update = {}) {
+    const next = { ...getPrefs(), ...update };
+    if (!LANGUAGES.some((l) => l.code === next.contentLanguage)) next.contentLanguage = DEFAULT_LANG;
+    if (!HANDLING.includes(next.foreignHatches)) next.foreignHatches = "translate";
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify(next));
+    } catch {
+      /* private browsing — preference stays for this session only */
+    }
+    return next;
+  }
+
+  // Seed Hatches (and any Hatch posted before this feature existed) carry no
+  // language field, so fall back to sniffing the text. CJK codepoints are the
+  // only signal needed to separate the two languages we support; a Chinese
+  // listing that name-drops "Shopify" is still overwhelmingly Chinese, so
+  // compare against the letter count rather than requiring purity.
+  function detectLanguage(...parts) {
+    const text = parts.flat().filter(Boolean).join(" ");
+    if (!text) return DEFAULT_LANG;
+    const cjk = (text.match(/[㐀-䶿一-鿿豈-﫿]/g) || []).length;
+    if (!cjk) return "en";
+    const latin = (text.match(/[A-Za-z]/g) || []).length;
+    return cjk * 2 >= latin ? "zh" : "en";
+  }
+
+  // The language a Hatch is written in: an explicit stamp when the poster's
+  // client set one, otherwise sniffed from its text.
+  function taskLanguage(task = {}) {
+    if (LANGUAGES.some((l) => l.code === task.language)) return task.language;
+    return detectLanguage(task.title, task.objective, task.description, task.business);
+  }
+
   applyDocumentLang();
 
-  return { apply, getLang, setLang, languages, languageOf, t };
+  return {
+    apply,
+    getLang,
+    setLang,
+    languages,
+    languageOf,
+    t,
+    getPrefs,
+    setPrefs,
+    detectLanguage,
+    taskLanguage,
+  };
 })();

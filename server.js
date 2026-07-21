@@ -682,6 +682,61 @@ async function handleProjectAssistant(req, res) {
   }
 }
 
+// Hatch content is written in whatever language the client used. Browsing
+// Hatchers can ask for a translation into their own language; the client caches
+// each result so a given Hatch is only ever paid for once per target language.
+function translationPrompt(targetLabel) {
+  return `You translate freelance-marketplace project listings into ${targetLabel}.
+
+Rules:
+- Translate naturally, the way a native ${targetLabel} speaker would write a job listing. Do not translate word for word.
+- Keep the meaning, tone, and level of detail identical. Never add, drop, or invent details.
+- Leave proper nouns, brand names, tool names (Shopify, Canva, Instagram, Google Sheets), URLs, and product codes untranslated.
+- Keep currency amounts, numbers, and date ranges exactly as written.
+- "Hatch" is the product name for a project listing. Keep it as "Hatch".
+- If a value is already in ${targetLabel}, return it unchanged.
+
+Return ONLY this JSON shape, translating each provided field. Preserve arrays as arrays of the same length:
+{
+  "title": "",
+  "objective": "",
+  "description": "",
+  "business": "",
+  "deliverables": []
+}`;
+}
+
+const LANGUAGE_LABELS = { en: "English", zh: "Simplified Chinese" };
+
+async function handleTranslate(req, res) {
+  try {
+    const body = await readBody(req);
+    const payload = JSON.parse(body || "{}");
+    const targetLabel = LANGUAGE_LABELS[payload.target];
+    if (!targetLabel) {
+      return sendJson(res, 400, { ok: false, error: `Unsupported target language: ${payload.target}` });
+    }
+
+    const fields = payload.fields && typeof payload.fields === "object" ? payload.fields : {};
+    if (!Object.keys(fields).length) {
+      return sendJson(res, 400, { ok: false, error: "No fields to translate." });
+    }
+
+    const result = await callOpenAI(fields, translationPrompt(targetLabel));
+    if (!result.ok) return sendJson(res, result.status || 500, result);
+    return sendJson(res, 200, {
+      ok: true,
+      target: payload.target,
+      translation: result.brief,
+      provider: result.provider,
+      model: result.model,
+      responseTimeMs: result.responseTimeMs,
+    });
+  } catch (error) {
+    return sendJson(res, 500, { ok: false, error: error.message || "Translation failed." });
+  }
+}
+
 function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const requested = url.pathname === "/" ? "/index.html" : url.pathname;
@@ -745,6 +800,11 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "POST" && req.url === "/api/project-assistant") {
     handleProjectAssistant(req, res);
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/translate") {
+    handleTranslate(req, res);
     return;
   }
 
