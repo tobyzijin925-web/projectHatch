@@ -82,9 +82,11 @@ window.SkillNestApp = (() => {
   }
 
   // Stores a backend login: token plus the server's view of the account
-  // (which carries isAdmin and the server-assigned role).
+  // (which carries isAdmin and the server-assigned role). Message caches are
+  // per-account, so they reset whenever a session is (re)established.
   function storeBackendSession(data, localExtras = {}) {
     if (!data?.ok || !data.token) return false;
+    clearMessagingState();
     localStorage.setItem("hatchAuthToken", data.token);
     const current = readJson("skillnestAccount", {});
     localStorage.setItem("skillnestAccount", JSON.stringify({ ...current, ...localExtras, ...data.account }));
@@ -3591,6 +3593,7 @@ window.SkillNestApp = (() => {
     if (backendToken()) backendFetch("/api/auth/logout", { method: "POST" });
     localStorage.removeItem("hatchAuthToken");
     localStorage.removeItem("skillnestLoggedIn");
+    clearMessagingState();
     setRoute("home");
     render();
   }
@@ -3953,7 +3956,7 @@ window.SkillNestApp = (() => {
       ? "Work submitted. The client has been notified and can review it."
       : "Work submitted and saved to this Hatch.");
     closeModal();
-    refreshInbox();
+    refreshConversations();
     render();
   }
 
@@ -4012,7 +4015,7 @@ window.SkillNestApp = (() => {
       ? "Submission approved. This Hatch is now Hatched."
       : "Changes requested. The Hatcher has been asked to revise.");
     closeModal();
-    refreshInbox();
+    refreshConversations();
     render();
   }
 
@@ -4298,37 +4301,366 @@ window.SkillNestApp = (() => {
     }
   }
 
-  // ── Inbox ──────────────────────────────────────────────────────────────────
-  // The inbox lives on the backend; a localStorage cache lets render() stay
-  // synchronous. Refreshes re-render only when something actually changed,
-  // so the refresh-inside-render cycle settles instead of looping.
+  // ── Messaging ──────────────────────────────────────────────────────────────
+  // Conversations live on the backend; a localStorage cache lets render()
+  // stay synchronous. Refreshes re-render only when something actually
+  // changed, so the refresh-inside-render cycle settles instead of looping.
+  // The open thread lives in module state (it survives re-renders because
+  // the JS context does; only the DOM is rebuilt).
 
-  function getInbox() {
-    return readJson("hatchInboxCache", { messages: [], unreadCount: 0 });
+  let messagingThread = { conversationId: null, conversation: null, messages: [], loading: false };
+  let messagesFilter = "all";
+
+  // null = never fetched for this session (show "loading"), [] = genuinely
+  // no conversations — the distinction stops a fresh login from flashing
+  // "No conversations yet" while the first fetch is in flight.
+  function getConversations() {
+    return readJson("hatchConversationsCache", null);
   }
 
-  let inboxRefreshInFlight = false;
-  async function refreshInbox() {
-    if (!backendToken() || inboxRefreshInFlight) return;
-    inboxRefreshInFlight = true;
-    const data = await backendFetch("/api/inbox");
-    inboxRefreshInFlight = false;
+  function getMessagesUnread() {
+    return Number(localStorage.getItem("hatchMessagesUnreadCache") || 0);
+  }
+
+  function clearMessagingState() {
+    messagingThread = { conversationId: null, conversation: null, messages: [], loading: false };
+    messagesFilter = "all";
+    localStorage.removeItem("hatchConversationsCache");
+    localStorage.removeItem("hatchMessagesUnreadCache");
+    localStorage.removeItem("hatchInboxCache"); // pre-messaging cache cleanup
+  }
+
+  // Updates the nav badge in place — a full render() would wipe whatever the
+  // user is typing just to change a number.
+  function updateNavMessagesBadge() {
+    const badge = document.querySelector("[data-msg-badge]");
+    if (!badge) return;
+    const count = getMessagesUnread();
+    badge.hidden = count === 0;
+    badge.textContent = count > 99 ? "99+" : String(count);
+  }
+
+  // Re-render, but keep the half-typed chat message and its focus alive
+  // across the innerHTML swap.
+  function rerenderPreservingCompose() {
+    const input = document.getElementById("chatComposeInput");
+    const value = input ? input.value : "";
+    const hadFocus = document.activeElement === input;
+    render();
+    const next = document.getElementById("chatComposeInput");
+    if (next && value) next.value = value;
+    if (next && hadFocus) next.focus();
+  }
+
+  let conversationsRefreshInFlight = false;
+  async function refreshConversations() {
+    if (!backendToken() || conversationsRefreshInFlight) return;
+    conversationsRefreshInFlight = true;
+    const data = await backendFetch("/api/messages/conversations");
+    conversationsRefreshInFlight = false;
     if (!data?.ok) return;
-    const cache = JSON.stringify({ messages: data.messages, unreadCount: data.unreadCount });
-    if (cache !== localStorage.getItem("hatchInboxCache")) {
-      localStorage.setItem("hatchInboxCache", cache);
-      render();
+    localStorage.setItem("hatchMessagesUnreadCache", String(data.unreadCount || 0));
+    updateNavMessagesBadge();
+    const list = data.conversations || [];
+    if (JSON.stringify(list) !== localStorage.getItem("hatchConversationsCache")) {
+      // Participant avatars can make this payload large; if the quota-guarded
+      // write fails, retry with avatars stripped so the list still renders.
+      if (!trySetLocalStorage("hatchConversationsCache", list)) {
+        trySetLocalStorage("hatchConversationsCache", list.map((conversation) => ({
+          ...conversation,
+          participants: (conversation.participants || []).map((p) => ({ ...p, avatar: "" })),
+        })));
+      }
+      if (currentRoute() === "messages" || currentRoute() === "profile") rerenderPreservingCompose();
     }
   }
 
-  async function markMessageRead(id) {
-    await backendFetch(`/api/inbox/${id}/read`, { method: "POST" });
-    refreshInbox();
+  async function refreshMessagesUnread() {
+    if (!backendToken()) return;
+    const data = await backendFetch("/api/messages/unread-count");
+    if (!data?.ok) return;
+    const next = String(data.unreadCount || 0);
+    if (next !== localStorage.getItem("hatchMessagesUnreadCache")) {
+      localStorage.setItem("hatchMessagesUnreadCache", next);
+      updateNavMessagesBadge();
+    }
   }
 
-  async function markAllMessagesRead() {
-    await backendFetch("/api/inbox/read-all", { method: "POST" });
-    refreshInbox();
+  async function openConversation(id) {
+    id = Number(id);
+    messagingThread = { conversationId: id, conversation: null, messages: [], loading: true };
+    if (currentRoute() !== "messages") setRoute("messages");
+    render();
+
+    const data = await backendFetch(`/api/messages/conversations/${id}`);
+    // Stale response: the user opened another thread (or closed the pane)
+    // while this fetch was in flight — don't clobber the newer state.
+    if (messagingThread.conversationId !== id) return;
+    if (!data?.ok) {
+      messagingThread = { conversationId: null, conversation: null, messages: [], loading: false };
+      render();
+      return;
+    }
+    messagingThread = {
+      conversationId: id,
+      conversation: data.conversation,
+      messages: data.messages || [],
+      loading: false,
+    };
+    render();
+
+    if (data.conversation.unreadCount > 0) {
+      await backendFetch(`/api/messages/conversations/${id}/read`, { method: "POST" });
+      refreshConversations();
+    }
+  }
+
+  function closeThread() {
+    messagingThread = { conversationId: null, conversation: null, messages: [], loading: false };
+    render();
+  }
+
+  function setMessagesFilter(filter) {
+    messagesFilter = filter;
+    render();
+  }
+
+  // Reloads the open thread; re-renders only when render-relevant content
+  // changed. readAt is excluded from the comparison — it isn't rendered, and
+  // the server stamping it (own open, or the counterpart reading) would
+  // otherwise force a spurious re-render on every poll.
+  let threadReloadInFlight = false;
+  async function reloadActiveThread() {
+    const id = messagingThread.conversationId;
+    if (!id || threadReloadInFlight) return;
+    threadReloadInFlight = true;
+    const data = await backendFetch(`/api/messages/conversations/${id}`);
+    threadReloadInFlight = false;
+    if (!data?.ok || messagingThread.conversationId !== id) return;
+    const fingerprint = (msgs) => JSON.stringify((msgs || []).map(({ readAt, ...rest }) => rest));
+    const changed = fingerprint(data.messages) !== fingerprint(messagingThread.messages);
+    messagingThread = { conversationId: id, conversation: data.conversation, messages: data.messages || [], loading: false };
+    if (changed) {
+      rerenderPreservingCompose();
+      if (data.conversation.unreadCount > 0) {
+        await backendFetch(`/api/messages/conversations/${id}/read`, { method: "POST" });
+        refreshConversations();
+      }
+    }
+  }
+
+  async function sendChatMessage(event) {
+    event.preventDefault();
+    const input = document.getElementById("chatComposeInput");
+    const text = (input?.value || "").trim();
+    const id = messagingThread.conversationId;
+    if (!text || !id) return;
+    if (input) input.value = "";
+
+    const result = await backendFetch(`/api/messages/conversations/${id}`, { method: "POST", body: { body: text } });
+    if (!result?.ok) {
+      const retry = document.getElementById("chatComposeInput");
+      if (retry) retry.value = text;
+      window.alert(result?.error || "That message couldn't be sent. Is the server running?");
+      return;
+    }
+    await reloadActiveThread();
+    refreshConversations();
+  }
+
+  function openNewMessage(to = "", hatchId = "", hatchTitle = "") {
+    openModal(C.newMessageModal({ to, hatchId, hatchTitle }));
+    window.setTimeout(() => (document.getElementById(to ? "newMessageBody" : "newMessageTo") || document.getElementById("newMessageBody"))?.focus(), 60);
+  }
+
+  // "Message <poster>" on a browse card's detail modal.
+  function openNewMessageForTask(taskId) {
+    const task = findAnyTask(taskId);
+    if (!task?.backendId || !task.createdByUsername) return;
+    closeModal();
+    openNewMessage(task.createdByUsername, task.backendId, task.title || "");
+  }
+
+  // "Message client / Message Hatcher" on profile rows: the server resolves
+  // the other party from the hatch, so no local knowledge of who claimed it
+  // is needed.
+  function openNewMessageForHatch(backendId) {
+    const known = [...getPostedTasks(), ...getMissions()].find((item) => item.backendId === backendId);
+    openNewMessage("", backendId, known?.title || "");
+  }
+
+  async function sendNewMessage(event) {
+    event.preventDefault();
+    const to = document.getElementById("newMessageTo")?.value.trim() || "";
+    const hatchId = document.getElementById("newMessageHatchId")?.value.trim() || "";
+    const body = document.getElementById("newMessageBody")?.value.trim() || "";
+    if (!body || (!to && !hatchId)) return;
+
+    const payload = { body };
+    if (to) payload.to = to;
+    if (hatchId) payload.hatchId = hatchId;
+    const result = await backendFetch("/api/messages/start", { method: "POST", body: payload });
+    if (!result?.ok) {
+      window.alert(result?.error || "That message couldn't be sent. Is the server running?");
+      return;
+    }
+    closeModal();
+    refreshConversations();
+    openConversation(result.conversation.id);
+  }
+
+  async function archiveConversation(id, archived) {
+    const result = await backendFetch(`/api/messages/conversations/${Number(id)}/${archived ? "archive" : "unarchive"}`, { method: "POST" });
+    if (!result?.ok) {
+      window.alert(result?.error || "That change couldn't be saved. Is the server running?");
+      return;
+    }
+    if (messagingThread.conversation && messagingThread.conversationId === Number(id)) {
+      messagingThread.conversation.archived = archived;
+    }
+    await refreshConversations();
+    render();
+  }
+
+  // Poll for new activity so the nav badge and an open thread stay fresh
+  // without websockets. Cache comparisons keep quiet polls render-free.
+  window.setInterval(() => {
+    if (!isLoggedIn() || !backendToken()) return;
+    refreshMessagesUnread();
+    if (currentRoute() === "messages") {
+      refreshConversations();
+      reloadActiveThread();
+    }
+  }, 20000);
+
+  // ── Profile dropdown (nav avatar menu) ─────────────────────────────────────
+  // The menu is rendered closed on every page build; these handlers open and
+  // close it in place. Outside clicks and Escape close it from the
+  // document-level listeners registered once below.
+
+  function toggleProfileMenu(event) {
+    event.stopPropagation();
+    const menu = document.getElementById("profileMenu");
+    if (!menu) return;
+    const willOpen = menu.hidden;
+    menu.hidden = !willOpen;
+    document.querySelector(".avatar-button")?.setAttribute("aria-expanded", String(willOpen));
+  }
+
+  function closeProfileMenu() {
+    const menu = document.getElementById("profileMenu");
+    if (menu && !menu.hidden) {
+      menu.hidden = true;
+      document.querySelector(".avatar-button")?.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    // Outside clicks close the menu; so do its navigation links (which fire
+    // no hashchange when the target route is already active). The Appearance
+    // toggle is a <button>, so it stays open for repeated flips.
+    if (!event.target.closest(".profile-menu-wrap") || event.target.closest(".profile-menu a")) closeProfileMenu();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeProfileMenu();
+  });
+
+  // Theme toggle inside the dropdown: flips the theme in place (same reason
+  // as toggleDarkMode — no full render) and relabels itself.
+  function toggleDarkModeFromMenu() {
+    toggleDarkMode();
+    const isDark = document.documentElement.classList.contains("dark-mode");
+    const label = document.querySelector("[data-appearance-label]");
+    if (label) label.textContent = `Appearance: ${isDark ? "Dark" : "Light"}`;
+    const icon = document.querySelector("[data-appearance-icon]");
+    if (icon) icon.textContent = isDark ? "☾" : "☀";
+  }
+
+  // ── Account settings ───────────────────────────────────────────────────────
+
+  function storeAccountFields(account) {
+    const current = readJson("skillnestAccount", {});
+    localStorage.setItem("skillnestAccount", JSON.stringify({ ...current, ...account }));
+  }
+
+  // Downscale to a small square so avatars stay a few KB — kind to both the
+  // users table and the localStorage copy of the account.
+  function resizeImageToDataUrl(file, maxSize = 256) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.max(1, Math.round(img.width * scale));
+          canvas.height = Math.max(1, Math.round(img.height * scale));
+          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL(file.type === "image/png" ? "image/png" : "image/jpeg", 0.85));
+        };
+        img.onerror = () => reject(new Error("That file couldn't be read as an image."));
+        img.src = String(reader.result || "");
+      };
+      reader.onerror = () => reject(new Error("That file couldn't be read."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleAvatarFile(event) {
+    const input = event.currentTarget;
+    const file = input.files && input.files[0];
+    input.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      window.alert("Choose an image file for your profile picture.");
+      return;
+    }
+    let avatarData;
+    try {
+      avatarData = await resizeImageToDataUrl(file);
+    } catch (error) {
+      window.alert(error.message || "That image couldn't be processed.");
+      return;
+    }
+    const result = await backendFetch("/api/auth/profile", { method: "POST", body: { avatarData } });
+    if (!result?.ok) {
+      window.alert(result?.error || "The backend is unreachable, so your picture wasn't saved.");
+      return;
+    }
+    storeAccountFields(result.account);
+    localStorage.setItem("hatchSettingsNotice", "Profile picture updated.");
+    render();
+    window.setTimeout(() => {
+      localStorage.removeItem("hatchSettingsNotice");
+    }, 4000);
+  }
+
+  async function removeAvatar() {
+    const result = await backendFetch("/api/auth/profile", { method: "POST", body: { removeAvatar: true } });
+    if (!result?.ok) {
+      window.alert(result?.error || "The backend is unreachable, so your picture wasn't removed.");
+      return;
+    }
+    storeAccountFields(result.account);
+    localStorage.removeItem("hatchSettingsNotice");
+    render();
+  }
+
+  async function saveAccountSettings(event) {
+    event.preventDefault();
+    const name = document.getElementById("settingsName")?.value.trim() || "";
+    if (!name) return;
+    const result = await backendFetch("/api/auth/profile", { method: "POST", body: { name } });
+    if (!result?.ok) {
+      window.alert(result?.error || "The backend is unreachable, so your changes weren't saved.");
+      return;
+    }
+    storeAccountFields(result.account);
+    localStorage.setItem("hatchSettingsNotice", "Display name saved.");
+    render();
+    window.setTimeout(() => {
+      localStorage.removeItem("hatchSettingsNotice");
+    }, 4000);
   }
 
   // ── Admin ──────────────────────────────────────────────────────────────────
@@ -4572,22 +4904,60 @@ window.SkillNestApp = (() => {
         ? Pages.browsePage(browsableTasks())
       : route === "verified-work"
         ? Pages.verifiedWorkPage()
+      : route === "messages"
+        ? (isLoggedIn()
+          ? Pages.messagesPage(account, {
+            conversations: getConversations(),
+            activeId: messagingThread.conversationId,
+            conversation: messagingThread.conversation,
+            messages: messagingThread.messages,
+            loading: messagingThread.loading,
+            filter: messagesFilter,
+          })
+          : Pages.authPage())
+      : route === "settings"
+        ? (isLoggedIn() ? Pages.settingsPage(account) : Pages.authPage())
       : route === "profile"
         ? (isLoggedIn()
-          ? Pages.profilePage(account, getPostedTasks(), getMissions(), getOperatorApplications(), getInbox(), getAdminData(), account.isAdmin ? adminHatchList() : [])
+          ? Pages.profilePage(account, getPostedTasks(), getMissions(), getOperatorApplications(), getMessagesUnread(), getAdminData(), account.isAdmin ? adminHatchList() : [])
           : Pages.authPage())
       : Pages.homePage(draftTask, files);
 
     // Profile data lives on the backend; kick off refreshes that re-render
     // only when the cached copy is stale.
     if (route === "profile" && isLoggedIn()) {
-      refreshInbox();
+      refreshConversations();
       refreshApplicationStatus();
       refreshAdminData();
     }
+    if (route === "messages" && isLoggedIn()) {
+      refreshConversations();
+      // Re-entering with a thread already open: catch up on messages that
+      // arrived while the poll was paused on other routes.
+      reloadActiveThread();
+    }
     if (route === "browse") refreshOpenHatches();
 
+    // Two bits of ephemeral UI state must survive the innerHTML swap: an open
+    // profile dropdown (background polls would otherwise snap it shut), and
+    // the reader's place in a scrolled-up thread.
+    const menuWasOpen = document.getElementById("profileMenu")?.hidden === false;
+    const prevThread = document.getElementById("threadBody");
+    const prevScroll = prevThread
+      ? {
+        top: prevThread.scrollTop,
+        atBottom: prevThread.scrollHeight - prevThread.scrollTop - prevThread.clientHeight < 40,
+      }
+      : null;
+
     document.getElementById("app").innerHTML = `<div class="app-shell">${C.nav(route, isLoggedIn(), account)}${page}${C.footer(isLoggedIn(), account)}</div>`;
+    if (menuWasOpen) {
+      const menu = document.getElementById("profileMenu");
+      if (menu) {
+        menu.hidden = false;
+        document.querySelector(".avatar-button")?.setAttribute("aria-expanded", "true");
+      }
+    }
     requestAnimationFrame(() => {
       document.querySelectorAll(".reveal").forEach((el) => el.classList.add("visible"));
       syncMissionCardStates();
@@ -4596,6 +4966,12 @@ window.SkillNestApp = (() => {
       animateAssistantTyping();
       startHeroTypewriter();
       if (route === "browse") applyTaskFilters();
+      if (route === "messages") {
+        const thread = document.getElementById("threadBody");
+        // Snap to the newest message on first open or when already reading
+        // the bottom; otherwise restore the reader's scroll position.
+        if (thread) thread.scrollTop = (!prevScroll || prevScroll.atBottom) ? thread.scrollHeight : prevScroll.top;
+      }
     });
   }
 
@@ -4658,8 +5034,20 @@ window.SkillNestApp = (() => {
     removePostedTaskFile,
     render,
     refreshBackendAccount,
-    markMessageRead,
-    markAllMessagesRead,
+    openConversation,
+    closeThread,
+    setMessagesFilter,
+    sendChatMessage,
+    openNewMessage,
+    openNewMessageForTask,
+    openNewMessageForHatch,
+    sendNewMessage,
+    archiveConversation,
+    toggleProfileMenu,
+    toggleDarkModeFromMenu,
+    handleAvatarFile,
+    removeAvatar,
+    saveAccountSettings,
     adminReviewApplication,
     adminDeleteHatch,
     adminSendMessage,

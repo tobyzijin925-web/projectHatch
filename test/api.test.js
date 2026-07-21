@@ -61,6 +61,7 @@ before(async () => {
       HOST: "127.0.0.1",
       PORT: String(PORT),
       HATCH_DB_PATH: path.join(tempDir, "test.db"),
+      HATCH_ADMIN_EMAILS: "admin@test.local",
     },
     stdio: "ignore",
   });
@@ -247,6 +248,246 @@ test("cancel and dispute rules", async () => {
   });
   assert.equal(dispute.body.hatch.state, "disputed");
   assert.equal(dispute.body.hatch.status, "Disputed");
+});
+
+test("messaging: welcome message, hatch system updates, direct threads, read/unread, archive", async () => {
+  const client = await signup();
+  const hatcher = await signup();
+
+  // Signup dropped a system welcome message into a system conversation.
+  const welcomeList = await api("GET", "/api/messages/conversations", { token: client.token });
+  assert.equal(welcomeList.status, 200);
+  const welcome = welcomeList.body.conversations.find((item) => item.kind === "system" && !item.hatchId);
+  assert.ok(welcome, "expected a system welcome conversation");
+  assert.match(welcome.lastMessage.body, /Welcome to Hatch/);
+  assert.equal(welcome.unreadCount, 1);
+  assert.ok(welcomeList.body.unreadCount >= 1);
+
+  // Claiming a hatch sends the client a system message tied to that hatch.
+  const hatch = await createHatch(client.token);
+  await api("POST", `/api/hatches/${hatch.id}/claim`, { token: hatcher.token });
+  const afterClaim = await api("GET", "/api/messages/conversations", { token: client.token });
+  const hatchThread = afterClaim.body.conversations.find((item) => item.kind === "system" && item.hatchId === hatch.id);
+  assert.ok(hatchThread, "expected a per-hatch system conversation");
+  assert.equal(hatchThread.hatchTitle, hatch.title);
+  assert.match(hatchThread.lastMessage.body, /claimed your Hatch/);
+
+  // System conversations refuse replies.
+  const replyToSystem = await api("POST", `/api/messages/conversations/${hatchThread.id}`, {
+    token: client.token,
+    body: { body: "hello?" },
+  });
+  assert.equal(replyToSystem.status, 403);
+
+  // The client starts the hatch's direct thread without naming the Hatcher —
+  // the server resolves the counterpart from the hatch.
+  const started = await api("POST", "/api/messages/start", {
+    token: client.token,
+    body: { hatchId: hatch.id, body: "Hi! Excited to see what you build." },
+  });
+  assert.equal(started.status, 201);
+  const direct = started.body.conversation;
+  assert.equal(direct.kind, "direct");
+  assert.equal(direct.hatchId, hatch.id);
+  assert.equal(direct.participants[0].username, hatcher.account.username);
+
+  // Starting again reuses the same conversation instead of forking a new one.
+  const startedAgain = await api("POST", "/api/messages/start", {
+    token: client.token,
+    body: { hatchId: hatch.id, body: "One more thing — brand colors are green." },
+  });
+  assert.equal(startedAgain.body.conversation.id, direct.id);
+
+  // The Hatcher sees 2 unread in that thread, reads them, replies.
+  const hatcherList = await api("GET", "/api/messages/conversations", { token: hatcher.token });
+  const hatcherView = hatcherList.body.conversations.find((item) => item.id === direct.id);
+  assert.equal(hatcherView.unreadCount, 2);
+  const thread = await api("GET", `/api/messages/conversations/${direct.id}`, { token: hatcher.token });
+  assert.equal(thread.body.messages.length, 2);
+  assert.equal(thread.body.messages[0].fromMe, false);
+  assert.equal(thread.body.messages[0].sender.username, client.account.username);
+  await api("POST", `/api/messages/conversations/${direct.id}/read`, { token: hatcher.token });
+  const afterRead = await api("GET", "/api/messages/conversations", { token: hatcher.token });
+  assert.equal(afterRead.body.conversations.find((item) => item.id === direct.id).unreadCount, 0);
+  const reply = await api("POST", `/api/messages/conversations/${direct.id}`, {
+    token: hatcher.token,
+    body: { body: "Sounds good — green it is." },
+  });
+  assert.equal(reply.status, 201);
+
+  // A stranger can neither read nor post into the thread.
+  const stranger = await signup();
+  const strangerRead = await api("GET", `/api/messages/conversations/${direct.id}`, { token: stranger.token });
+  assert.equal(strangerRead.status, 404);
+  const strangerPost = await api("POST", `/api/messages/conversations/${direct.id}`, {
+    token: stranger.token,
+    body: { body: "let me in" },
+  });
+  assert.equal(strangerPost.status, 404);
+
+  // General (non-hatch) messaging by username is its own conversation.
+  const general = await api("POST", "/api/messages/start", {
+    token: hatcher.token,
+    body: { to: client.account.username, body: "Unrelated: what AI tools do you use?" },
+  });
+  assert.equal(general.status, 201);
+  assert.notEqual(general.body.conversation.id, direct.id);
+  assert.equal(general.body.conversation.hatchId, null);
+
+  // Archive hides it from the unread total; a new message un-archives it.
+  const unreadBefore = await api("GET", "/api/messages/unread-count", { token: client.token });
+  await api("POST", `/api/messages/conversations/${general.body.conversation.id}/archive`, { token: client.token });
+  const unreadAfter = await api("GET", "/api/messages/unread-count", { token: client.token });
+  assert.equal(unreadAfter.body.unreadCount, unreadBefore.body.unreadCount - 1);
+  await api("POST", `/api/messages/conversations/${general.body.conversation.id}`, {
+    token: hatcher.token,
+    body: { body: "ping" },
+  });
+  const clientList = await api("GET", "/api/messages/conversations", { token: client.token });
+  const generalView = clientList.body.conversations.find((item) => item.id === general.body.conversation.id);
+  assert.equal(generalView.archived, false);
+
+  // Empty and oversized messages are rejected.
+  const empty = await api("POST", `/api/messages/conversations/${direct.id}`, {
+    token: client.token,
+    body: { body: "   " },
+  });
+  assert.equal(empty.status, 400);
+  const huge = await api("POST", `/api/messages/conversations/${direct.id}`, {
+    token: client.token,
+    body: { body: "x".repeat(5001) },
+  });
+  assert.equal(huge.status, 400);
+});
+
+test("messaging hardening: no email lookup, no hatch-tag spoofing, sending un-archives for the sender", async () => {
+  const alice = await signup();
+  const bob = await signup();
+  const stranger = await signup();
+
+  // Recipients resolve by username only — an email must not map to an identity.
+  const byEmail = await api("POST", "/api/messages/start", {
+    token: stranger.token,
+    body: { to: bob.account.email, body: "probing" },
+  });
+  assert.equal(byEmail.status, 404);
+
+  // A hatch context can only be attached when one side is on the hatch.
+  const hatch = await createHatch(alice.token);
+  const spoofed = await api("POST", "/api/messages/start", {
+    token: stranger.token,
+    body: { to: bob.account.username, hatchId: hatch.id, body: "official-looking scam" },
+  });
+  assert.equal(spoofed.status, 403);
+  // ...but messaging the hatch's poster about their hatch stays allowed.
+  const legit = await api("POST", "/api/messages/start", {
+    token: stranger.token,
+    body: { to: alice.account.username, hatchId: hatch.id, body: "Question before I claim this" },
+  });
+  assert.equal(legit.status, 201);
+
+  // Sending into a thread you archived brings it back for you too.
+  await api("POST", `/api/messages/conversations/${legit.body.conversation.id}/archive`, { token: stranger.token });
+  const resent = await api("POST", `/api/messages/conversations/${legit.body.conversation.id}`, {
+    token: stranger.token,
+    body: { body: "One more question" },
+  });
+  assert.equal(resent.status, 201);
+  assert.equal(resent.body.conversation.archived, false);
+  const list = await api("GET", "/api/messages/conversations", { token: stranger.token });
+  assert.equal(list.body.conversations.find((c) => c.id === legit.body.conversation.id).archived, false);
+});
+
+test("busy threads keep showing the newest messages (500-cap truncates the old end)", async () => {
+  const alice = await signup();
+  const bob = await signup();
+  const started = await api("POST", "/api/messages/start", {
+    token: alice.token,
+    body: { to: bob.account.username, body: "msg 0" },
+  });
+  const id = started.body.conversation.id;
+
+  // 509 more messages in parallel batches (the server serializes writes).
+  for (let batch = 0; batch < 6; batch += 1) {
+    await Promise.all(Array.from({ length: 85 }, (_, i) =>
+      api("POST", `/api/messages/conversations/${id}`, {
+        token: alice.token,
+        body: { body: `bulk ${batch * 85 + i + 1}` },
+      })));
+  }
+  const final = await api("POST", `/api/messages/conversations/${id}`, {
+    token: alice.token,
+    body: { body: "the newest message" },
+  });
+  assert.equal(final.status, 201);
+
+  const thread = await api("GET", `/api/messages/conversations/${id}`, { token: bob.token });
+  assert.equal(thread.body.messages.length, 500);
+  assert.equal(thread.body.messages[thread.body.messages.length - 1].body, "the newest message");
+});
+
+test("admin hatch deletion notifies via a replyable direct message with the hatch named", async () => {
+  // The admin allowlist for tests is set via HATCH_ADMIN_EMAILS in before().
+  const admin = await signup({ username: "admin_msg", email: "admin@test.local" });
+  const client = await signup();
+  const hatch = await createHatch(client.token, { title: "Doomed hatch" });
+
+  const deleted = await api("DELETE", `/api/hatches/${hatch.id}`, { token: admin.token });
+  assert.equal(deleted.status, 200);
+
+  const list = await api("GET", "/api/messages/conversations", { token: client.token });
+  const notice = list.body.conversations.find((c) => c.kind === "direct"
+    && c.participants.some((p) => p.username === "admin_msg"));
+  assert.ok(notice, "expected a direct conversation from the admin");
+  assert.match(notice.lastMessage.body, /Doomed hatch/);
+
+  // And the recipient can actually reply, as the notice invites.
+  const reply = await api("POST", `/api/messages/conversations/${notice.id}`, {
+    token: client.token,
+    body: { body: "That was a mistake — please restore it." },
+  });
+  assert.equal(reply.status, 201);
+});
+
+test("profile: avatar upload, validation, and name change", async () => {
+  const user = await signup();
+  const avatar = `data:image/png;base64,${"a".repeat(120)}`;
+
+  const updated = await api("POST", "/api/auth/profile", {
+    token: user.token,
+    body: { name: "New Display Name", avatarData: avatar },
+  });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.account.name, "New Display Name");
+  assert.equal(updated.body.account.avatar, avatar);
+
+  const me = await api("GET", "/api/auth/me", { token: user.token });
+  assert.equal(me.body.account.avatar, avatar);
+
+  const notImage = await api("POST", "/api/auth/profile", {
+    token: user.token,
+    body: { avatarData: "data:text/html,<script>alert(1)</script>" },
+  });
+  assert.equal(notImage.status, 400);
+
+  const removed = await api("POST", "/api/auth/profile", {
+    token: user.token,
+    body: { removeAvatar: true },
+  });
+  assert.equal(removed.body.account.avatar, "");
+
+  // The avatar travels with messages so threads can render it.
+  const friend = await signup();
+  await api("POST", "/api/auth/profile", { token: user.token, body: { avatarData: avatar } });
+  const started = await api("POST", "/api/messages/start", {
+    token: user.token,
+    body: { to: friend.account.username, body: "avatar check" },
+  });
+  const thread = await api("GET", `/api/messages/conversations/${started.body.conversation.id}`, { token: friend.token });
+  assert.equal(thread.body.messages[0].sender.avatar, avatar);
+  const list = await api("GET", "/api/messages/conversations", { token: friend.token });
+  const view = list.body.conversations.find((item) => item.id === started.body.conversation.id);
+  assert.equal(view.participants[0].avatar, avatar);
 });
 
 test("static server refuses dotfiles and the database directory", async () => {

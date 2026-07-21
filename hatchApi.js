@@ -146,7 +146,7 @@ function authenticate(req) {
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (!token) return null;
   const row = db.prepare(`
-    SELECT u.id, u.username, u.email, u.name, u.role, u.joined_at, s.token_hash, s.expires_at
+    SELECT u.id, u.username, u.email, u.name, u.role, u.joined_at, u.avatar_data, s.token_hash, s.expires_at
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token_hash = ?
   `).get(hashToken(token));
@@ -186,6 +186,7 @@ function accountPayload(user) {
     role: user.role,
     provider: "Email",
     joinedAt: user.joined_at,
+    avatar: user.avatar_data || "",
     isAdmin: isAdminUser(user),
   };
 }
@@ -238,29 +239,132 @@ function toClientHatch(row) {
   };
 }
 
-// ── Inbox ──────────────────────────────────────────────────────────────────
+// ── Messaging core ─────────────────────────────────────────────────────────
+// Conversations hold both user-to-user threads (kind 'direct') and updates
+// from the platform itself (kind 'system', sender_id NULL, one per user per
+// hatch context). Handlers live in the "Messaging handlers" section below.
 
-// Drops a message into a user's inbox. sender null = system notification.
-function notify(recipientId, { senderId = null, kind = "system", subject = "", body = "", hatchId = null } = {}) {
-  if (!recipientId) return;
-  db.prepare(`
-    INSERT INTO messages (recipient_id, sender_id, kind, subject, body, hatch_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(recipientId, senderId, kind, subject, body, hatchId, nowIso());
+const MAX_MESSAGE_CHARS = 5000;
+
+function userSummary(row) {
+  return { id: row.id, username: row.username, name: row.name, avatar: row.avatar_data || "" };
 }
 
-function toClientMessage(row) {
+function hatchTitleSnapshot(hatchId) {
+  if (!hatchId) return null;
+  return db.prepare("SELECT title FROM hatches WHERE id = ?").get(hatchId)?.title || null;
+}
+
+function getOrCreateSystemConversation(userId, hatchId = null) {
+  const existing = db.prepare(`
+    SELECT c.id FROM conversations c
+    JOIN conversation_participants p ON p.conversation_id = c.id
+    WHERE c.kind = 'system' AND p.user_id = ? AND c.hatch_id IS ?
+  `).get(userId, hatchId ?? null);
+  if (existing) return existing.id;
+
+  const stamp = nowIso();
+  const created = db.prepare(
+    "INSERT INTO conversations (kind, hatch_id, hatch_title, created_at, updated_at) VALUES ('system', ?, ?, ?, ?)",
+  ).run(hatchId ?? null, hatchTitleSnapshot(hatchId), stamp, stamp);
+  const id = Number(created.lastInsertRowid);
+  db.prepare("INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?)").run(id, userId);
+  return id;
+}
+
+function findDirectConversation(userA, userB, hatchId = null) {
+  return db.prepare(`
+    SELECT c.id FROM conversations c
+    JOIN conversation_participants pa ON pa.conversation_id = c.id AND pa.user_id = ?
+    JOIN conversation_participants pb ON pb.conversation_id = c.id AND pb.user_id = ?
+    WHERE c.kind = 'direct' AND c.hatch_id IS ?
+  `).get(userA, userB, hatchId ?? null);
+}
+
+function getOrCreateDirectConversation(userA, userB, hatchId = null) {
+  const existing = findDirectConversation(userA, userB, hatchId);
+  if (existing) return existing.id;
+
+  const stamp = nowIso();
+  const created = db.prepare(
+    "INSERT INTO conversations (kind, hatch_id, hatch_title, created_at, updated_at) VALUES ('direct', ?, ?, ?, ?)",
+  ).run(hatchId ?? null, hatchTitleSnapshot(hatchId), stamp, stamp);
+  const id = Number(created.lastInsertRowid);
+  const addParticipant = db.prepare("INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?)");
+  addParticipant.run(id, userA);
+  addParticipant.run(id, userB);
+  return id;
+}
+
+// senderId NULL = the Hatch system sender.
+function appendMessage(conversationId, senderId, body) {
+  const stamp = nowIso();
+  db.prepare(
+    "INSERT INTO conversation_messages (conversation_id, sender_id, body, created_at) VALUES (?, ?, ?, ?)",
+  ).run(conversationId, senderId, body, stamp);
+  db.prepare("UPDATE conversations SET updated_at = ? WHERE id = ?").run(stamp, conversationId);
+  // New activity pulls the thread back out of everyone's archive — including
+  // the sender's own: sending into a thread is the clearest possible signal
+  // they want it active again.
+  db.prepare(
+    "UPDATE conversation_participants SET archived_at = NULL WHERE conversation_id = ?",
+  ).run(conversationId);
+}
+
+// Drops a system message into a user's inbox, in their system conversation
+// for the given hatch (or their general Hatch thread). The senderId/kind of
+// the old notification inbox are accepted-and-ignored so the many existing
+// call sites don't all need to change: every notify() is a system message
+// now, and the subject becomes the message's first line.
+function notify(recipientId, { subject = "", body = "", hatchId = null } = {}) {
+  if (!recipientId) return;
+  const conversationId = getOrCreateSystemConversation(recipientId, hatchId);
+  appendMessage(conversationId, null, [subject, body].filter(Boolean).join("\n") || "(no message)");
+}
+
+// The conversation row as the given user sees it (their archived flag, the
+// other side's identity, unread count, and a preview of the latest message).
+function toClientConversation(row, userId) {
+  const participants = db.prepare(`
+    SELECT u.id, u.username, u.name, u.avatar_data
+    FROM conversation_participants p JOIN users u ON u.id = p.user_id
+    WHERE p.conversation_id = ? AND p.user_id <> ?
+  `).all(row.id, userId).map(userSummary);
+  const last = db.prepare(
+    "SELECT sender_id, body, created_at FROM conversation_messages WHERE conversation_id = ? ORDER BY id DESC LIMIT 1",
+  ).get(row.id);
+  const unread = db.prepare(`
+    SELECT COUNT(*) AS n FROM conversation_messages
+    WHERE conversation_id = ? AND read_at IS NULL AND (sender_id IS NULL OR sender_id <> ?)
+  `).get(row.id, userId).n;
   return {
     id: row.id,
     kind: row.kind,
-    subject: row.subject,
-    body: row.body,
     hatchId: row.hatch_id,
-    from: row.sender_username ? { username: row.sender_username, name: row.sender_name } : null,
-    read: Boolean(row.read_at),
-    readAt: row.read_at,
-    createdAt: row.created_at,
+    // Live title while the hatch exists, snapshot after an admin deletes it.
+    hatchTitle: row.hatch_id ? hatchTitleSnapshot(row.hatch_id) || row.hatch_title : null,
+    archived: Boolean(row.archived_at),
+    participants,
+    lastMessage: last
+      ? {
+        body: last.body,
+        fromMe: last.sender_id === userId,
+        system: last.sender_id === null,
+        createdAt: last.created_at,
+      }
+      : null,
+    unreadCount: unread,
+    updatedAt: row.updated_at,
   };
+}
+
+// Membership check + the user's own participant row in one query.
+function conversationForUser(conversationId, userId) {
+  return db.prepare(`
+    SELECT c.*, p.archived_at FROM conversations c
+    JOIN conversation_participants p ON p.conversation_id = c.id
+    WHERE c.id = ? AND p.user_id = ?
+  `).get(Number(conversationId), userId);
 }
 
 function toClientApplication(row) {
@@ -365,6 +469,10 @@ async function handleSignup(req, res) {
   `).run(username, email, name, role, hash, salt, joinedAt);
 
   const user = { id: Number(inserted.lastInsertRowid), username, email, name, role, joined_at: joinedAt };
+  notify(user.id, {
+    subject: "Welcome to Hatch 🐣",
+    body: "Thanks for being an early user. Post what you need done and Chickie will shape it into a clear brief — or claim an open Hatch to build your track record. Updates about your Hatches will arrive here in Messages.",
+  });
   sendJson(res, 201, { ok: true, token: createSession(user.id), account: accountPayload(user) });
 }
 
@@ -704,34 +812,204 @@ function failTransition(res, result, id, user, party, forbiddenMessage) {
   return fail(res, result.errorStatus, result.error);
 }
 
-// ── Inbox handlers ─────────────────────────────────────────────────────────
+// ── Messaging handlers ─────────────────────────────────────────────────────
 
-function handleInbox(req, res) {
+function totalUnreadCount(userId) {
+  return db.prepare(`
+    SELECT COUNT(*) AS n FROM conversation_messages m
+    JOIN conversation_participants p ON p.conversation_id = m.conversation_id
+    WHERE p.user_id = ? AND p.archived_at IS NULL
+      AND m.read_at IS NULL AND (m.sender_id IS NULL OR m.sender_id <> ?)
+  `).get(userId, userId).n;
+}
+
+function handleListConversations(req, res) {
   const user = requireUser(req, res);
   if (!user) return;
   const rows = db.prepare(`
-    SELECT m.*, su.username AS sender_username, su.name AS sender_name
-    FROM messages m LEFT JOIN users su ON su.id = m.sender_id
-    WHERE m.recipient_id = ? ORDER BY m.id DESC LIMIT 200
+    SELECT c.*, p.archived_at FROM conversations c
+    JOIN conversation_participants p ON p.conversation_id = c.id
+    WHERE p.user_id = ? ORDER BY c.updated_at DESC LIMIT 200
   `).all(user.id);
-  const unread = rows.filter((row) => !row.read_at).length;
-  sendJson(res, 200, { ok: true, messages: rows.map(toClientMessage), unreadCount: unread });
+  sendJson(res, 200, {
+    ok: true,
+    conversations: rows.map((row) => toClientConversation(row, user.id)),
+    unreadCount: totalUnreadCount(user.id),
+  });
 }
 
-function handleMarkRead(req, res, id) {
+function handleUnreadCount(req, res) {
   const user = requireUser(req, res);
   if (!user) return;
-  db.prepare("UPDATE messages SET read_at = ? WHERE id = ? AND recipient_id = ? AND read_at IS NULL")
-    .run(nowIso(), Number(id), user.id);
+  sendJson(res, 200, { ok: true, unreadCount: totalUnreadCount(user.id) });
+}
+
+function handleGetConversation(req, res, id) {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const row = conversationForUser(id, user.id);
+  if (!row) return fail(res, 404, "Conversation not found.");
+
+  // Newest 500, then reversed to chronological — truncating from the old end
+  // would permanently hide every message after the 500th in a busy thread.
+  const messages = db.prepare(`
+    SELECT m.id, m.sender_id, m.body, m.created_at, m.read_at,
+      u.id AS user_id, u.username, u.name, u.avatar_data
+    FROM conversation_messages m LEFT JOIN users u ON u.id = m.sender_id
+    WHERE m.conversation_id = ? ORDER BY m.id DESC LIMIT 500
+  `).all(row.id).reverse().map((message) => ({
+    id: message.id,
+    body: message.body,
+    system: message.sender_id === null,
+    fromMe: message.sender_id === user.id,
+    sender: message.sender_id === null
+      ? null
+      : { id: message.user_id, username: message.username, name: message.name, avatar: message.avatar_data || "" },
+    createdAt: message.created_at,
+    readAt: message.read_at,
+  }));
+
+  sendJson(res, 200, { ok: true, conversation: toClientConversation(row, user.id), messages });
+}
+
+function validMessageText(res, rawBody) {
+  const text = String(rawBody || "").trim();
+  if (!text) {
+    fail(res, 400, "The message cannot be empty.");
+    return null;
+  }
+  if (text.length > MAX_MESSAGE_CHARS) {
+    fail(res, 400, `Messages are capped at ${MAX_MESSAGE_CHARS} characters.`);
+    return null;
+  }
+  return text;
+}
+
+async function handleSendMessage(req, res, id) {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const row = conversationForUser(id, user.id);
+  if (!row) return fail(res, 404, "Conversation not found.");
+  if (row.kind === "system") return fail(res, 403, "You can't reply to updates from Hatch.");
+
+  const body = await readJsonBody(req);
+  const text = validMessageText(res, body.body || body.message);
+  if (text === null) return;
+
+  appendMessage(row.id, user.id, text);
+  // row was read before appendMessage cleared archive flags, so patch the
+  // fields appendMessage just changed rather than reporting stale ones.
+  sendJson(res, 201, { ok: true, conversation: toClientConversation({ ...row, archived_at: null, updated_at: nowIso() }, user.id) });
+}
+
+// Starts (or continues) a direct conversation. The recipient is either named
+// explicitly ("to": username or email), or resolved from a hatch the sender
+// is on — the client reaches the Hatcher and vice versa — so the frontend
+// can offer "Message" buttons without knowing the counterpart's identity.
+async function handleStartConversation(req, res) {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const body = await readJsonBody(req);
+  const text = validMessageText(res, body.body || body.message);
+  if (text === null) return;
+
+  const hatchId = String(body.hatchId || "").trim() || null;
+  let hatch = null;
+  if (hatchId) {
+    hatch = db.prepare("SELECT id, title, created_by, claimed_by FROM hatches WHERE id = ?").get(hatchId);
+    if (!hatch) return fail(res, 404, "That Hatch no longer exists.");
+  }
+
+  const to = String(body.to || "").trim();
+  let recipient = null;
+  if (to) {
+    // Username only: resolving by email would let any account turn a private
+    // email address into a username/name/avatar (admins keep the email path
+    // in handleAdminMessage, behind requireAdmin).
+    recipient = db.prepare("SELECT id, username FROM users WHERE username = ?").get(to);
+    if (!recipient) return fail(res, 404, `No account matches "${to}".`);
+  } else if (hatch) {
+    if (user.id !== hatch.created_by && user.id !== hatch.claimed_by) {
+      return fail(res, 403, "Only the client or the Hatcher on this Hatch can start its conversation.");
+    }
+    const counterpartId = user.id === hatch.created_by ? hatch.claimed_by : hatch.created_by;
+    if (!counterpartId) return fail(res, 400, "No Hatcher has claimed this Hatch yet.");
+    recipient = db.prepare("SELECT id, username FROM users WHERE id = ?").get(counterpartId);
+    if (!recipient) return fail(res, 404, "The other person on this Hatch no longer has an account.");
+  } else {
+    return fail(res, 400, 'Say who the message is for in a "to" field (username), or pass a hatchId.');
+  }
+  if (recipient.id === user.id) return fail(res, 400, "You can't message yourself.");
+  // A hatch tag on the thread implies a real relationship: at least one side
+  // must be the hatch's client or Hatcher. Without this, anyone could dress
+  // up a cold message with an official-looking hatch context chip.
+  if (hatch) {
+    const pair = [user.id, recipient.id];
+    if (!pair.includes(hatch.created_by) && !pair.includes(hatch.claimed_by)) {
+      return fail(res, 403, "You can only tag a Hatch when you or the recipient is its client or Hatcher.");
+    }
+  }
+
+  const conversationId = transact(() => {
+    const idFound = getOrCreateDirectConversation(user.id, recipient.id, hatch ? hatch.id : null);
+    appendMessage(idFound, user.id, text);
+    return idFound;
+  });
+
+  const row = conversationForUser(conversationId, user.id);
+  sendJson(res, 201, { ok: true, conversation: toClientConversation(row, user.id) });
+}
+
+function handleMarkConversationRead(req, res, id) {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const row = conversationForUser(id, user.id);
+  if (!row) return fail(res, 404, "Conversation not found.");
+  db.prepare(`
+    UPDATE conversation_messages SET read_at = ?
+    WHERE conversation_id = ? AND read_at IS NULL AND (sender_id IS NULL OR sender_id <> ?)
+  `).run(nowIso(), row.id, user.id);
+  sendJson(res, 200, { ok: true, unreadCount: totalUnreadCount(user.id) });
+}
+
+function handleArchiveConversation(req, res, id, archived) {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const result = db.prepare(
+    "UPDATE conversation_participants SET archived_at = ? WHERE conversation_id = ? AND user_id = ?",
+  ).run(archived ? nowIso() : null, Number(id), user.id);
+  if (result.changes !== 1) return fail(res, 404, "Conversation not found.");
   sendJson(res, 200, { ok: true });
 }
 
-function handleMarkAllRead(req, res) {
+// ── Account profile handler ────────────────────────────────────────────────
+
+// Updates the signed-in user's display name and/or avatar. The avatar is a
+// data: URL the client already downscaled; the cap here is the server-side
+// backstop against oversized rows.
+const MAX_AVATAR_CHARS = 500_000;
+
+async function handleUpdateProfile(req, res) {
   const user = requireUser(req, res);
   if (!user) return;
-  db.prepare("UPDATE messages SET read_at = ? WHERE recipient_id = ? AND read_at IS NULL")
-    .run(nowIso(), user.id);
-  sendJson(res, 200, { ok: true });
+  const body = await readJsonBody(req);
+
+  if (body.name !== undefined) {
+    const name = String(body.name || "").trim();
+    if (!name) return fail(res, 400, "Name cannot be empty.");
+    db.prepare("UPDATE users SET name = ? WHERE id = ?").run(name.slice(0, 120), user.id);
+  }
+  if (body.removeAvatar === true) {
+    db.prepare("UPDATE users SET avatar_data = '' WHERE id = ?").run(user.id);
+  } else if (body.avatarData !== undefined) {
+    const avatar = String(body.avatarData || "");
+    if (!/^data:image\//.test(avatar)) return fail(res, 400, "The avatar must be an image.");
+    if (avatar.length > MAX_AVATAR_CHARS) return fail(res, 400, "That avatar image is too large.");
+    db.prepare("UPDATE users SET avatar_data = ? WHERE id = ?").run(avatar, user.id);
+  }
+
+  const fresh = db.prepare("SELECT * FROM users WHERE id = ?").get(user.id);
+  sendJson(res, 200, { ok: true, account: accountPayload(fresh) });
 }
 
 // ── Hatcher application handlers ───────────────────────────────────────────
@@ -860,24 +1138,26 @@ async function handleAdminDeleteHatch(req, res, id) {
     const hatch = db.prepare("SELECT id, title, created_by, claimed_by FROM hatches WHERE id = ?").get(id);
     if (!hatch) return { errorStatus: 404, error: "Hatch not found." };
 
+    // The notice invites a reply ("...if you think this was a mistake"), so
+    // it goes out as a direct message from the deleting admin — system
+    // conversations refuse replies. Sent before the DELETE while the hatch
+    // row still exists.
+    const bodyText = note || "An admin removed this Hatch. Reply to this message if you think this was a mistake.";
+    const sendNotice = (userId, subjectText) => {
+      if (!userId || userId === admin.id) return;
+      const conversationId = getOrCreateDirectConversation(admin.id, userId, null);
+      appendMessage(conversationId, admin.id, [subjectText, bodyText].join("\n"));
+    };
+    sendNotice(hatch.created_by, `Your Hatch "${hatch.title}" was removed`);
+    if (hatch.claimed_by && hatch.claimed_by !== hatch.created_by) {
+      sendNotice(hatch.claimed_by, `The Hatch "${hatch.title}" you were working on was removed`);
+    }
+
     // Children first: these tables reference hatches(id) without cascades.
     db.prepare("DELETE FROM payments WHERE hatch_id = ?").run(id);
     db.prepare("DELETE FROM submissions WHERE hatch_id = ?").run(id);
     db.prepare("DELETE FROM hatch_events WHERE hatch_id = ?").run(id);
     db.prepare("DELETE FROM hatches WHERE id = ?").run(id);
-
-    const subject = `Your Hatch "${hatch.title}" was removed`;
-    const bodyText = note || "An admin removed this Hatch. Reply to this message if you think this was a mistake.";
-    notify(hatch.created_by, { senderId: admin.id, kind: "admin", subject, body: bodyText, hatchId: hatch.id });
-    if (hatch.claimed_by && hatch.claimed_by !== hatch.created_by) {
-      notify(hatch.claimed_by, {
-        senderId: admin.id,
-        kind: "admin",
-        subject: `The Hatch "${hatch.title}" you were working on was removed`,
-        body: bodyText,
-        hatchId: hatch.id,
-      });
-    }
     return {};
   });
 
@@ -885,6 +1165,9 @@ async function handleAdminDeleteHatch(req, res, id) {
   sendJson(res, 200, { ok: true, deleted: id });
 }
 
+// Sends a direct message from the admin's own account, so the recipient can
+// reply to it like any other conversation (the old version dropped a one-way
+// note into the notification inbox).
 async function handleAdminMessage(req, res) {
   const admin = requireAdmin(req, res);
   if (!admin) return;
@@ -896,12 +1179,12 @@ async function handleAdminMessage(req, res) {
 
   const recipient = db.prepare("SELECT id, username FROM users WHERE username = ? OR email = ?").get(to, to);
   if (!recipient) return fail(res, 404, `No account matches "${to}".`);
+  if (recipient.id === admin.id) return fail(res, 400, "You can't message yourself.");
 
-  notify(recipient.id, {
-    senderId: admin.id,
-    kind: "admin",
-    subject: String(body.subject || "").trim() || "Message from the Hatch team",
-    body: messageBody,
+  const subject = String(body.subject || "").trim();
+  transact(() => {
+    const conversationId = getOrCreateDirectConversation(admin.id, recipient.id, null);
+    appendMessage(conversationId, admin.id, [subject, messageBody].filter(Boolean).join("\n"));
   });
   sendJson(res, 200, { ok: true, to: recipient.username });
 }
@@ -924,9 +1207,11 @@ async function route(req, res, url) {
   if (req.method === "POST" && p === "/api/auth/login") return handleLogin(req, res);
   if (req.method === "GET" && p === "/api/auth/me") return handleMe(req, res);
   if (req.method === "POST" && p === "/api/auth/logout") return handleLogout(req, res);
+  if (req.method === "POST" && p === "/api/auth/profile") return handleUpdateProfile(req, res);
 
-  if (req.method === "GET" && p === "/api/inbox") return handleInbox(req, res);
-  if (req.method === "POST" && p === "/api/inbox/read-all") return handleMarkAllRead(req, res);
+  if (req.method === "GET" && p === "/api/messages/conversations") return handleListConversations(req, res);
+  if (req.method === "POST" && p === "/api/messages/start") return handleStartConversation(req, res);
+  if (req.method === "GET" && p === "/api/messages/unread-count") return handleUnreadCount(req, res);
 
   if (p === "/api/hatcher-applications") {
     if (req.method === "GET") return handleListApplications(req, res, url);
@@ -943,8 +1228,14 @@ async function route(req, res, url) {
   }
 
   const parts = p.split("/").filter(Boolean); // ["api", section, id, action?]
-  if (parts[0] === "api" && parts[1] === "inbox" && parts.length === 4 && parts[3] === "read" && req.method === "POST") {
-    return handleMarkRead(req, res, parts[2]);
+  if (parts[0] === "api" && parts[1] === "messages" && parts[2] === "conversations" && parts[3] && req.method === "GET" && parts.length === 4) {
+    return handleGetConversation(req, res, parts[3]);
+  }
+  if (parts[0] === "api" && parts[1] === "messages" && parts[2] === "conversations" && parts[3] && req.method === "POST") {
+    if (parts.length === 4) return handleSendMessage(req, res, parts[3]);
+    if (parts.length === 5 && parts[4] === "read") return handleMarkConversationRead(req, res, parts[3]);
+    if (parts.length === 5 && parts[4] === "archive") return handleArchiveConversation(req, res, parts[3], true);
+    if (parts.length === 5 && parts[4] === "unarchive") return handleArchiveConversation(req, res, parts[3], false);
   }
   if (parts[0] === "api" && parts[1] === "hatcher-applications" && parts.length === 4 && parts[3] === "review" && req.method === "POST") {
     return handleReviewApplication(req, res, parts[2]);
@@ -961,7 +1252,7 @@ async function route(req, res, url) {
   return fail(res, 404, "Unknown API route.");
 }
 
-const API_PREFIXES = ["/api/auth", "/api/hatches", "/api/inbox", "/api/hatcher-applications", "/api/admin"];
+const API_PREFIXES = ["/api/auth", "/api/hatches", "/api/messages", "/api/hatcher-applications", "/api/admin"];
 
 // Returns true when the request was an API route this module owns.
 function handle(req, res) {

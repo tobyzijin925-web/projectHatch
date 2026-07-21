@@ -123,9 +123,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_applications_user ON hatcher_applications(user_id);
   CREATE INDEX IF NOT EXISTS idx_applications_status ON hatcher_applications(status);
 
-  -- Per-user inbox: admin notices, client/hatcher updates, system events.
-  -- hatch_id is intentionally not a foreign key so messages survive an
-  -- admin deleting the hatch they refer to.
+  -- Legacy per-user inbox, superseded by the conversation tables below.
+  -- Kept (read-only) so old rows survive; migrateLegacyInbox() copies them
+  -- into system conversations once, then nothing writes here again.
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     recipient_id INTEGER NOT NULL REFERENCES users(id),
@@ -138,6 +138,47 @@ db.exec(`
     created_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_id, read_at);
+
+  -- Messaging. A conversation is either 'direct' (two people) or 'system'
+  -- (one person receiving updates from Hatch itself). hatch_id is
+  -- intentionally not a foreign key so threads survive an admin deleting the
+  -- hatch they refer to; hatch_title is snapshotted for the same reason.
+  CREATE TABLE IF NOT EXISTS conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL DEFAULT 'direct' CHECK (kind IN ('direct', 'system')),
+    hatch_id TEXT,
+    hatch_title TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS conversation_participants (
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    archived_at TEXT,
+    PRIMARY KEY (conversation_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_participants_user ON conversation_participants(user_id);
+
+  -- sender_id NULL = the Hatch system sender. read_at works because a
+  -- message only ever has one recipient here: the other person in a direct
+  -- conversation, or the sole participant of a system conversation.
+  CREATE TABLE IF NOT EXISTS conversation_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+    sender_id INTEGER REFERENCES users(id),
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    read_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_conv_messages_conversation ON conversation_messages(conversation_id, id);
+  CREATE INDEX IF NOT EXISTS idx_conv_messages_unread ON conversation_messages(conversation_id, read_at);
+
+  -- One-off flags (e.g. "legacy inbox already migrated").
+  CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 
   -- Escrow/payout ledger. Rows are stubs until a payment provider is wired in
   -- via the onStateTransition hook in hatchApi.js.
@@ -200,6 +241,63 @@ function addColumnIfMissing(table, column, definition) {
 addColumnIfMissing("hatcher_applications", "linkedin", "TEXT NOT NULL DEFAULT ''");
 addColumnIfMissing("hatcher_applications", "resume_name", "TEXT NOT NULL DEFAULT ''");
 addColumnIfMissing("hatcher_applications", "resume_data", "TEXT NOT NULL DEFAULT ''");
+// Profile picture as a data: URL; empty = fall back to an initials avatar.
+addColumnIfMissing("users", "avatar_data", "TEXT NOT NULL DEFAULT ''");
+
+// One-time copy of the legacy notification inbox into system conversations,
+// so nobody loses their message history when the messaging UI replaces the
+// old profile inbox card. Each legacy row lands in the recipient's system
+// conversation for the hatch it referenced (or their general one).
+function migrateLegacyInbox() {
+  const done = db.prepare("SELECT value FROM meta WHERE key = 'legacy_inbox_migrated'").get();
+  if (done) return;
+
+  const legacy = db.prepare("SELECT * FROM messages ORDER BY id ASC").all();
+  const findConversation = db.prepare(`
+    SELECT c.id FROM conversations c
+    JOIN conversation_participants p ON p.conversation_id = c.id
+    WHERE c.kind = 'system' AND p.user_id = ? AND c.hatch_id IS ?
+  `);
+  const insertConversation = db.prepare(
+    "INSERT INTO conversations (kind, hatch_id, hatch_title, created_at, updated_at) VALUES ('system', ?, ?, ?, ?)",
+  );
+  const insertParticipant = db.prepare(
+    "INSERT INTO conversation_participants (conversation_id, user_id) VALUES (?, ?)",
+  );
+  const insertMessage = db.prepare(
+    "INSERT INTO conversation_messages (conversation_id, sender_id, body, created_at, read_at) VALUES (?, NULL, ?, ?, ?)",
+  );
+  const touchConversation = db.prepare("UPDATE conversations SET updated_at = ? WHERE id = ?");
+  const hatchTitle = db.prepare("SELECT title FROM hatches WHERE id = ?");
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    legacy.forEach((row) => {
+      const hatchId = row.hatch_id || null;
+      let conversation = findConversation.get(row.recipient_id, hatchId);
+      if (!conversation) {
+        const title = hatchId ? hatchTitle.get(hatchId)?.title || null : null;
+        const created = insertConversation.run(hatchId, title, row.created_at, row.created_at);
+        conversation = { id: Number(created.lastInsertRowid) };
+        insertParticipant.run(conversation.id, row.recipient_id);
+      }
+      const body = [row.subject, row.body].filter(Boolean).join("\n");
+      insertMessage.run(conversation.id, body || "(no message)", row.created_at, row.read_at);
+      touchConversation.run(row.created_at, conversation.id);
+    });
+    db.prepare("INSERT INTO meta (key, value) VALUES ('legacy_inbox_migrated', ?)").run(new Date().toISOString());
+    db.exec("COMMIT");
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // connection-level failure; original error matters more
+    }
+    throw error;
+  }
+}
+
+migrateLegacyInbox();
 
 function transact(fn) {
   db.exec("BEGIN IMMEDIATE");

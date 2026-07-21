@@ -19,6 +19,39 @@ window.SkillNestComponents = (() => {
     return `<span class="tag ${variant}">${escapeHtml(text)}</span>`;
   }
 
+  // ── Avatars ──────────────────────────────────────────────────────────────
+  // Every user gets a picture: their uploaded avatar when they set one, and a
+  // deterministic initials-on-color circle otherwise. System messages from
+  // Hatch itself use the hatchling mark so they read as platform, not person.
+
+  const AVATAR_COLORS = ["#0d8e5b", "#7c3aed", "#b45309", "#0369a1", "#be185d", "#4d7c0f", "#b91c1c", "#475569"];
+
+  function avatarColor(seed = "") {
+    let hash = 0;
+    const text = String(seed);
+    for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+    return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+  }
+
+  function avatarInitials(user = {}) {
+    const source = String(user.name || user.username || "?").trim();
+    const words = source.split(/\s+/).filter(Boolean);
+    const initials = words.length >= 2 ? `${words[0][0]}${words[1][0]}` : source.slice(0, 2);
+    return initials.toUpperCase();
+  }
+
+  function userAvatar(user = {}, className = "avatar-md") {
+    if (user.avatar && String(user.avatar).startsWith("data:image/")) {
+      return `<img class="user-avatar ${className}" src="${escapeHtml(user.avatar)}" alt="" />`;
+    }
+    const seed = user.username || user.email || user.name || "?";
+    return `<span class="user-avatar initials-avatar ${className}" style="background:${avatarColor(seed)}" aria-hidden="true">${escapeHtml(avatarInitials(user))}</span>`;
+  }
+
+  function systemAvatar(className = "avatar-md") {
+    return `<span class="user-avatar system-avatar ${className}" aria-hidden="true">🐣</span>`;
+  }
+
   function hatcherForWork(work) {
     return hatcherProfiles.find((profile) => profile.id === work.hatcherId);
   }
@@ -1286,11 +1319,66 @@ window.SkillNestComponents = (() => {
     `;
   }
 
+  // The account dropdown behind the nav avatar (YouTube-style): identity at
+  // the top, then the account destinations, then sign out. Rendered closed on
+  // every page build; SkillNestApp.toggleProfileMenu() shows/hides it in
+  // place, and document-level click/Escape handlers close it.
+  function profileMenuMarkup(account) {
+    const isDark = document.documentElement.classList.contains("dark-mode");
+    return `
+      <div class="profile-menu" id="profileMenu" role="menu" hidden>
+        <div class="profile-menu-header">
+          ${userAvatar(account, "avatar-lg")}
+          <div class="profile-menu-identity">
+            <strong>${escapeHtml(account.name || account.username || "Your account")}</strong>
+            <span>@${escapeHtml(account.username || "")}</span>
+            <a class="profile-menu-view-link" href="#profile" role="menuitem">View your profile</a>
+          </div>
+        </div>
+        <div class="profile-menu-divider"></div>
+        <a class="profile-menu-item" href="#profile" role="menuitem"><span aria-hidden="true">🥚</span> Your Hatches</a>
+        <a class="profile-menu-item" href="#messages" role="menuitem"><span aria-hidden="true">✉️</span> Messages</a>
+        <a class="profile-menu-item" href="#settings" role="menuitem"><span aria-hidden="true">⚙️</span> Manage account</a>
+        <div class="profile-menu-divider"></div>
+        <button class="profile-menu-item" type="button" role="menuitem" onclick="SkillNestApp.toggleDarkModeFromMenu(event)">
+          <span aria-hidden="true" data-appearance-icon>${isDark ? "☾" : "☀"}</span> <span data-appearance-label>Appearance: ${isDark ? "Dark" : "Light"}</span>
+        </button>
+        <div class="profile-menu-divider"></div>
+        <button class="profile-menu-item" type="button" role="menuitem" onclick="SkillNestApp.logout()"><span aria-hidden="true">↪</span> Sign out</button>
+      </div>
+    `;
+  }
+
+  function navMessagesButton(active) {
+    let unread = 0;
+    try {
+      unread = Number(localStorage.getItem("hatchMessagesUnreadCache") || 0);
+    } catch {
+      unread = 0;
+    }
+    return `
+      <a class="nav-icon-button ${active === "messages" ? "active" : ""}" href="#messages" aria-label="Messages${unread ? ` (${unread} unread)` : ""}">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="2.5" y="5" width="19" height="14" rx="3"></rect>
+          <path d="m3.5 7 8.5 6 8.5-6"></path>
+        </svg>
+        <span class="nav-msg-badge" data-msg-badge ${unread ? "" : "hidden"}>${unread > 99 ? "99+" : unread}</span>
+      </a>
+    `;
+  }
+
   function nav(active, isLoggedIn, account) {
     // Notion-style split: logo + links grouped on the left, quiet "Log in"
-    // link plus one solid CTA on the right.
+    // link plus one solid CTA on the right. Signed-in users get the messages
+    // icon and their avatar (which opens the account dropdown) instead.
     const accountCta = isLoggedIn
-      ? `<button class="btn secondary nav-cta" type="button" onclick="SkillNestApp.setRoute('profile')">${escapeHtml(account.username || "My Hatches")}</button>`
+      ? `${navMessagesButton(active)}
+         <div class="profile-menu-wrap">
+           <button class="avatar-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Open account menu" onclick="SkillNestApp.toggleProfileMenu(event)">
+             ${userAvatar(account, "avatar-sm")}
+           </button>
+           ${profileMenuMarkup(account)}
+         </div>`
       : `<a class="nav-login" href="#auth">Log in</a>
          <button class="btn primary nav-cta" type="button" onclick="SkillNestApp.setRoute('signup')">Get Hatch free</button>`;
 
@@ -1844,6 +1932,17 @@ window.SkillNestComponents = (() => {
     const deliverables = deliverablesForTask(task, category);
     const missingInfo = Array.isArray(task.missingInfo) && task.missingInfo.length ? task.missingInfo : missingInfoForTask(task, category, files, references);
     const isPostedClientTask = String(task.id || "").startsWith("hatch-") || String(task.id || "").startsWith("posted-");
+    // Real backend hatch posted by someone else, viewed with a live backend
+    // session: offer a direct line to the poster (opens the messaging
+    // compose). The token check matters — a logged-out browser still holds a
+    // stale skillnestAccount, and /api/messages/start would just 401.
+    const viewerAccount = readLocalJson("skillnestAccount", {});
+    const canMessagePoster = Boolean(
+      task.backendId && task.createdByUsername && viewerAccount.username
+      && localStorage.getItem("skillnestLoggedIn") === "true"
+      && localStorage.getItem("hatchAuthToken")
+      && task.createdByUsername !== viewerAccount.username,
+    );
     return modal(`
       <div class="detail-head">
         <span class="level-ribbon">${task.level}</span>
@@ -1894,6 +1993,11 @@ window.SkillNestComponents = (() => {
           `).join("")}
         </div>
       ` : `<p class="muted-text">No files or references attached.</p>`}
+      ${canMessagePoster ? `
+        <div class="task-actions modal-actions">
+          <button class="btn secondary full" type="button" onclick="SkillNestApp.openNewMessageForTask('${task.id}')">✉️ Message ${escapeHtml(task.createdByUsername)}</button>
+        </div>
+      ` : ""}
       ${isHatched ? `
         <p class="muted-text completion-note">This Hatch has already been completed.</p>
       ` : `
@@ -2048,6 +2152,115 @@ window.SkillNestComponents = (() => {
     `);
   }
 
+  // ── Messaging components ─────────────────────────────────────────────────
+
+  function formatMessageTime(iso) {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return "";
+    const now = new Date();
+    if (date.toDateString() === now.toDateString()) {
+      return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    }
+    const sameYear = date.getFullYear() === now.getFullYear();
+    return date.toLocaleDateString([], sameYear ? { month: "short", day: "numeric" } : { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  function messageFirstLine(text = "") {
+    return String(text).split("\n")[0];
+  }
+
+  function conversationDisplayName(conversation) {
+    if (conversation.kind === "system") return "Hatch";
+    const other = conversation.participants?.[0];
+    return other?.name || other?.username || "Former user";
+  }
+
+  function conversationAvatar(conversation, className = "avatar-md") {
+    if (conversation.kind === "system") return systemAvatar(className);
+    return userAvatar(conversation.participants?.[0] || {}, className);
+  }
+
+  function conversationItem(conversation, activeId) {
+    const last = conversation.lastMessage;
+    const preview = last
+      ? `${last.fromMe ? "You: " : ""}${messageFirstLine(last.body)}`
+      : "No messages yet";
+    const unread = conversation.unreadCount || 0;
+    return `
+      <button class="conversation-item ${conversation.id === activeId ? "active" : ""} ${unread ? "has-unread" : ""}" type="button" onclick="SkillNestApp.openConversation(${Number(conversation.id)})">
+        ${conversationAvatar(conversation, "avatar-md")}
+        <span class="conversation-copy">
+          <span class="conversation-top">
+            <strong>${escapeHtml(conversationDisplayName(conversation))}</strong>
+            <time>${escapeHtml(last ? formatMessageTime(last.createdAt) : "")}</time>
+          </span>
+          <span class="conversation-preview">${escapeHtml(preview)}</span>
+          ${conversation.hatchId ? `<span class="conversation-hatch-tag">🥚 ${escapeHtml(conversation.hatchTitle || "Removed Hatch")}</span>` : ""}
+        </span>
+        ${unread ? `<span class="conversation-unread">${unread > 9 ? "9+" : unread}</span>` : ""}
+      </button>
+    `;
+  }
+
+  // System messages render as a distinct centered card (Hatch mark, bold
+  // first line); user messages are chat bubbles, mine right, theirs left.
+  function messageBubble(message) {
+    if (message.system) {
+      const lines = String(message.body || "").split("\n");
+      const rest = lines.slice(1).join("\n").trim();
+      return `
+        <article class="msg-row system">
+          <div class="msg-system-card">
+            <span class="msg-system-source">${systemAvatar("avatar-xs")} Hatch</span>
+            <strong>${escapeHtml(lines[0])}</strong>
+            ${rest ? `<p>${escapeHtml(rest)}</p>` : ""}
+            <time>${escapeHtml(formatMessageTime(message.createdAt))}</time>
+          </div>
+        </article>
+      `;
+    }
+    return `
+      <article class="msg-row ${message.fromMe ? "mine" : "theirs"}">
+        ${message.fromMe ? "" : userAvatar(message.sender || {}, "avatar-sm")}
+        <div class="msg-bubble">
+          <p>${escapeHtml(message.body)}</p>
+          <time>${escapeHtml(formatMessageTime(message.createdAt))}</time>
+        </div>
+      </article>
+    `;
+  }
+
+  // Compose modal for starting a conversation. Three shapes: blank (type a
+  // username), recipient preset (from a "Message X" button), or hatch-only —
+  // no recipient field at all, the server resolves the other party.
+  function newMessageModal(preset = {}) {
+    const lockTo = Boolean(preset.to);
+    const resolveFromHatch = Boolean(preset.hatchId && !preset.to);
+    return modal(`
+      <h1 class="new-message-title">New message</h1>
+      ${preset.hatchTitle ? `<p class="muted-text">About the Hatch: ${escapeHtml(preset.hatchTitle)}</p>` : ""}
+      <form class="form-card new-message-form" onsubmit="SkillNestApp.sendNewMessage(event)">
+        <input type="hidden" id="newMessageHatchId" value="${escapeHtml(preset.hatchId || "")}" />
+        ${resolveFromHatch
+          ? `<p class="new-message-note">To: the other person on this Hatch</p>`
+          : `
+            <label class="field">
+              <span>To${lockTo ? "" : " (username)"}</span>
+              <input id="newMessageTo" type="text" placeholder="username" value="${escapeHtml(preset.to || "")}" ${lockTo ? "readonly" : ""} required />
+            </label>
+          `}
+        <label class="field full-field">
+          <span>Message</span>
+          <textarea id="newMessageBody" rows="4" placeholder="Write your message..." required></textarea>
+        </label>
+        <div class="task-actions modal-actions">
+          <button class="btn secondary full" type="button" onclick="SkillNestApp.closeModal()">Cancel</button>
+          <button class="btn primary full" type="submit">Send</button>
+        </div>
+      </form>
+    `);
+  }
+
   function footer(isLoggedIn, account = {}) {
     const profileLink = isLoggedIn ? `<a href="#profile">My Hatches</a>` : `<a href="#auth">Sign up / Log in</a>`;
     const isHatcher = isLoggedIn && /hatcher|operator/i.test(String(account.role || ""));
@@ -2087,9 +2300,17 @@ window.SkillNestComponents = (() => {
   return {
     buildTaskBrief,
     choiceField,
+    conversationAvatar,
+    conversationDisplayName,
+    conversationItem,
     escapeHtml,
     field,
     footer,
+    formatMessageTime,
+    messageBubble,
+    newMessageModal,
+    systemAvatar,
+    userAvatar,
     assistantConversationMarkup,
     briefReadyForReview,
     fallbackAssistantMessage,

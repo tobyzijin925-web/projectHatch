@@ -66,6 +66,7 @@ Auth endpoints return a bearer token; send it as `Authorization: Bearer <token>`
 - `POST /api/auth/signup` — `{username, name, email, password, role?}`
 - `POST /api/auth/login` — `{usernameOrEmail, password}`
 - `GET /api/auth/me`, `POST /api/auth/logout`
+- `POST /api/auth/profile` — `{name?, avatarData?, removeAvatar?}`; `avatarData` is a small `data:image/...` URL used as the profile picture (initials avatar otherwise)
 
 Hatch lifecycle (states: `open → claimed → in_progress → submitted → completed`, plus `disputed` / `cancelled`; responses carry both the machine `state` and the frontend `status` label such as "New Hatch"/"Incubating"/"Hatched"):
 
@@ -77,6 +78,18 @@ Hatch lifecycle (states: `open → claimed → in_progress → submitted → com
 - `POST /api/hatches/:id/submit` — `{message, attachments?}` deliverable (claimer only).
 - `POST /api/hatches/:id/review` — `{decision: "approve"|"reject", feedback?}` (creator only). Approve completes the hatch; reject sends it back to in_progress.
 - `POST /api/hatches/:id/cancel`, `POST /api/hatches/:id/dispute` — for the client / either party.
+
+Messaging (LinkedIn-style inbox at `#messages`; conversations are `direct` between two users or `system` — one-way updates from Hatch itself, e.g. "your Hatch was claimed"; hatch lifecycle events land in per-hatch system conversations automatically):
+
+- `GET /api/messages/conversations` — the caller's conversations with participants, last-message preview, per-thread and total unread counts.
+- `POST /api/messages/start` — `{body, to?, hatchId?}`; `to` is a username (email lookup is admin-only, to prevent email→identity mapping), or pass only `hatchId` and the server resolves the other party on that hatch (client ↔ Hatcher). A `hatchId` tag requires one side to be that hatch's client or Hatcher. Reuses the existing thread for the same pair + hatch.
+- `GET /api/messages/conversations/:id` — full thread (participants only).
+- `POST /api/messages/conversations/:id` — `{body}` send a message (not allowed into `system` threads).
+- `POST /api/messages/conversations/:id/read` — mark the thread's incoming messages read.
+- `POST /api/messages/conversations/:id/archive`, `.../unarchive` — per-user archive flag; new activity un-archives.
+- `GET /api/messages/unread-count` — for the nav badge (polled; no websockets yet).
+
+The pre-messaging notification inbox (`messages` table) is migrated into system conversations once at startup and no longer written to.
 
 Allowed state transitions are enforced in the database (a transitions table plus a trigger), and every change is recorded in `hatch_events`. Run the API tests with:
 

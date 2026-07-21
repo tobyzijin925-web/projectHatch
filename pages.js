@@ -457,6 +457,13 @@ window.SkillNestPages = (() => {
               ? `<p class="mission-review-note pending">📮 A submission is waiting for your review.</p>`
               : "";
           const displayStatus = status || item.level || "Open";
+          // Backend hatches have a counterpart to talk to. Posted rows always
+          // get the button (the server explains if nobody claimed yet), but a
+          // mission row only once the viewer actually claimed it — a merely
+          // Saved hatch belongs to strangers, and the server would 403.
+          const canMessage = Boolean(item.backendId)
+            && (type === "posted" || ["Incubating", "Accepted", "In review", "Hatched"].includes(status));
+          const messageLabel = type === "posted" ? "Message Hatcher" : "Message client";
           return `
           <article${awaitingReview ? ` class="is-in-review"` : ""}>
             <div>
@@ -469,6 +476,7 @@ window.SkillNestPages = (() => {
               ${canSubmit ? `<button class="btn primary small" type="button" onclick="SkillNestApp.openSubmitWork('${id}')">Submit work</button>` : ""}
               ${awaitingReview ? `<button class="btn secondary small" type="button" onclick="SkillNestApp.openSubmitWork('${id}')">Update submission</button>` : ""}
               ${canReview ? `<button class="btn primary small" type="button" onclick="SkillNestApp.openReviewWork('${id}')">Review work</button>` : ""}
+              ${canMessage ? `<button class="btn secondary small" type="button" onclick="SkillNestApp.openNewMessageForHatch('${C.escapeHtml(item.backendId)}')">${messageLabel}</button>` : ""}
               ${removable ? `<button class="btn ghost small danger" type="button" onclick="SkillNestApp.${removeHandler}('${id}')">${removeLabel}</button>` : ""}
             </div>
           </article>
@@ -478,24 +486,28 @@ window.SkillNestPages = (() => {
     `;
   }
 
-  function profilePage(account, postedTasks, missions, operatorApplications = [], inbox = { messages: [], unreadCount: 0 }, adminData = { applications: [], hatches: [] }, adminHatches = []) {
+  function profilePage(account, postedTasks, missions, operatorApplications = [], unreadMessages = 0, adminData = { applications: [], hatches: [] }, adminHatches = []) {
     const accepted = missions.filter((mission) => mission.status === "Incubating" || mission.status === "Accepted");
     const inReview = missions.filter((mission) => mission.status === "In review");
     const saved = missions.filter((mission) => mission.status === "Saved");
     const profileNotice = localStorage.getItem("hatchProfileNotice") || "";
-    const unread = inbox.unreadCount || 0;
+    const unread = Number(unreadMessages) || 0;
     return `
       <main class="section page">
         ${profileNotice ? `<div class="success-message show profile-notice">${C.escapeHtml(profileNotice)}</div>` : ""}
         <div class="profile-hero">
-          <div>
-            <div class="section-label">Profile</div>
-            <h1>${C.escapeHtml(account.name || account.username || "Your profile")}</h1>
-            <p>${C.escapeHtml(account.email || "")}</p>
+          <div class="profile-hero-id">
+            ${C.userAvatar(account, "avatar-xl")}
+            <div>
+              <div class="section-label">Profile</div>
+              <h1>${C.escapeHtml(account.name || account.username || "Your profile")}</h1>
+              <p>${C.escapeHtml(account.email || "")}</p>
+            </div>
           </div>
           <div class="profile-actions">
             <button class="btn secondary" type="button" onclick="SkillNestApp.setRoute('create-hatch')">Post a Hatch</button>
             <button class="btn secondary" type="button" onclick="SkillNestApp.setRoute('browse')">Browse Hatches</button>
+            <button class="btn secondary" type="button" onclick="SkillNestApp.setRoute('settings')">Manage account</button>
             <button class="btn ghost" type="button" onclick="SkillNestApp.logout()">Log out</button>
           </div>
         </div>
@@ -533,10 +545,12 @@ window.SkillNestPages = (() => {
           </section>
           <section class="profile-card wide">
             <div class="card-title-row">
-              <h2>Inbox${unread ? ` <span class="unread-badge">${unread} new</span>` : ""}</h2>
-              ${unread ? `<button class="btn ghost small" type="button" onclick="SkillNestApp.markAllMessagesRead()">Mark all read</button>` : ""}
+              <h2>Messages${unread ? ` <span class="unread-badge">${unread} new</span>` : ""}</h2>
+              <button class="btn secondary small" type="button" onclick="SkillNestApp.setRoute('messages')">Open Messages</button>
             </div>
-            ${inboxList(inbox)}
+            <p class="muted-text">${unread
+              ? `You have ${unread} unread message${unread === 1 ? "" : "s"} waiting.`
+              : "Chat with clients and Hatchers, and get updates from Hatch, in Messages."}</p>
           </section>
           <section class="profile-card wide">
             <div class="card-title-row">
@@ -548,30 +562,6 @@ window.SkillNestPages = (() => {
           ${account.isAdmin ? adminPanel(adminData, adminHatches) : ""}
         </div>
       </main>
-    `;
-  }
-
-  function inboxList(inbox) {
-    const messages = inbox.messages || [];
-    if (!messages.length) {
-      return `<p class="muted-text">Updates from clients, Hatchers, and the Hatch team will appear here.</p>`;
-    }
-    const kindLabel = { admin: "Hatch team", client: "Client update", hatcher: "Hatcher update", system: "Hatch" };
-    return `
-      <div class="profile-list inbox-list">
-        ${messages.map((message) => `
-          <article class="${message.read ? "" : "inbox-unread"}">
-            <div>
-              <h3>${C.escapeHtml(message.subject || "(no subject)")}</h3>
-              <p>${C.escapeHtml(message.body)}</p>
-              <p class="inbox-meta">${C.escapeHtml(kindLabel[message.kind] || "Hatch")}${message.from ? ` &middot; ${C.escapeHtml(message.from.name || message.from.username)}` : ""} &middot; ${C.escapeHtml(new Date(message.createdAt).toLocaleString())}</p>
-            </div>
-            <div class="mission-actions">
-              ${message.read ? "" : `<button class="btn ghost small" type="button" onclick="SkillNestApp.markMessageRead(${Number(message.id)})">Mark read</button>`}
-            </div>
-          </article>
-        `).join("")}
-      </div>
     `;
   }
 
@@ -633,7 +623,7 @@ window.SkillNestPages = (() => {
           <input id="adminMessageTo" type="text" placeholder="Username or email" required />
           <input id="adminMessageSubject" type="text" placeholder="Subject" />
           <textarea id="adminMessageBody" rows="3" placeholder="Message" required></textarea>
-          <button class="btn secondary small" type="submit">Send to inbox</button>
+          <button class="btn secondary small" type="submit">Send as direct message</button>
         </form>
       </section>
     `;
@@ -664,6 +654,155 @@ window.SkillNestPages = (() => {
         ${linkedinRow}
         ${resumeRow}
       </dl>
+    `;
+  }
+
+  // LinkedIn-style inbox: conversation list + filter tabs on the left, the
+  // selected thread on the right. On narrow screens the two panels swap via
+  // the thread-open class (list first, thread slides in when one is picked).
+  function messagesPage(account, state = {}) {
+    // null = the first fetch hasn't landed yet; [] = truly no conversations.
+    const loaded = Array.isArray(state.conversations);
+    const conversations = loaded ? state.conversations : [];
+    const filter = state.filter || "all";
+    const activeId = state.activeId || null;
+    const filters = [
+      ["all", "All"],
+      ["hatch", "Hatch-related"],
+      ["unread", "Unread"],
+      ["archived", "Archived"],
+    ];
+    const visible = conversations.filter((conversation) => {
+      if (filter === "archived") return conversation.archived;
+      if (conversation.archived) return false;
+      if (filter === "hatch") return Boolean(conversation.hatchId);
+      if (filter === "unread") return (conversation.unreadCount || 0) > 0;
+      return true;
+    });
+    const emptyCopy = {
+      all: "No conversations yet. Message someone from a Hatch, or start one with New message.",
+      hatch: "No Hatch-related conversations yet. They start when you message someone from a Hatch page.",
+      unread: "You're all caught up.",
+      archived: "Nothing archived.",
+    }[filter];
+
+    return `
+      <main class="section page messages-page">
+        <div class="messages-shell ${activeId ? "thread-open" : ""}">
+          <aside class="conversation-panel" aria-label="Conversations">
+            <div class="conversation-panel-head">
+              <h1>Messages</h1>
+              <button class="btn secondary small" type="button" onclick="SkillNestApp.openNewMessage()">New message</button>
+            </div>
+            <div class="msg-filter-tabs" role="tablist" aria-label="Filter conversations">
+              ${filters.map(([id, label]) => `
+                <button class="msg-filter-tab ${filter === id ? "active" : ""}" type="button" role="tab" aria-selected="${filter === id}" onclick="SkillNestApp.setMessagesFilter('${id}')">${label}</button>
+              `).join("")}
+            </div>
+            <div class="conversation-list">
+              ${visible.length
+                ? visible.map((conversation) => C.conversationItem(conversation, activeId)).join("")
+                : `<p class="conversation-empty">${loaded ? C.escapeHtml(emptyCopy) : "Loading conversations..."}</p>`}
+            </div>
+          </aside>
+          ${messagesThreadPanel(state)}
+        </div>
+      </main>
+    `;
+  }
+
+  function messagesThreadPanel(state) {
+    const conversation = state.conversation;
+    if (!state.activeId) {
+      return `
+        <section class="thread-panel thread-empty" aria-label="Conversation">
+          <div class="thread-placeholder">
+            <span aria-hidden="true">✉️</span>
+            <h2>Pick a conversation</h2>
+            <p>Choose a thread on the left, or start a new message.</p>
+          </div>
+        </section>
+      `;
+    }
+    if (state.loading || !conversation) {
+      return `<section class="thread-panel thread-empty" aria-label="Conversation"><div class="thread-placeholder"><p>Loading conversation...</p></div></section>`;
+    }
+
+    const isSystem = conversation.kind === "system";
+    const name = C.conversationDisplayName(conversation);
+    return `
+      <section class="thread-panel" aria-label="Conversation with ${C.escapeHtml(name)}">
+        <div class="thread-header">
+          <button class="thread-back" type="button" aria-label="Back to conversations" onclick="SkillNestApp.closeThread()">←</button>
+          ${C.conversationAvatar(conversation, "avatar-md")}
+          <div class="thread-header-copy">
+            <strong>${C.escapeHtml(name)}</strong>
+            ${conversation.hatchId
+              ? `<span>🥚 ${C.escapeHtml(conversation.hatchTitle || "Removed Hatch")}</span>`
+              : `<span>${isSystem ? "Updates from the Hatch platform" : `@${C.escapeHtml(conversation.participants?.[0]?.username || "")}`}</span>`}
+          </div>
+          <button class="btn ghost small thread-archive" type="button" onclick="SkillNestApp.archiveConversation(${Number(conversation.id)}, ${conversation.archived ? "false" : "true"})">
+            ${conversation.archived ? "Unarchive" : "Archive"}
+          </button>
+        </div>
+        <div class="thread-body" id="threadBody">
+          ${(state.messages || []).map((message) => C.messageBubble(message)).join("")}
+        </div>
+        ${isSystem
+          ? `<div class="thread-compose system-note">These are automatic updates from Hatch — replies aren't needed.</div>`
+          : `
+            <form class="thread-compose" onsubmit="SkillNestApp.sendChatMessage(event)">
+              <input id="chatComposeInput" type="text" placeholder="Write a message..." autocomplete="off" maxlength="5000" />
+              <button class="btn primary small" type="submit">Send</button>
+            </form>
+          `}
+      </section>
+    `;
+  }
+
+  function settingsPage(account) {
+    const notice = localStorage.getItem("hatchSettingsNotice") || "";
+    return `
+      <main class="section page">
+        ${notice ? `<div class="success-message show profile-notice">${C.escapeHtml(notice)}</div>` : ""}
+        <div class="settings-layout">
+          <div class="form-copy">
+            <div class="section-label">Manage account</div>
+            <h1>Account settings.</h1>
+            <p>Update how you appear across Hatch — your profile picture and display name.</p>
+          </div>
+          <div class="settings-column">
+            <section class="profile-card settings-card">
+              <h2>Profile picture</h2>
+              <div class="settings-avatar-row">
+                ${C.userAvatar(account, "avatar-xl")}
+                <div class="settings-avatar-actions">
+                  <input id="avatarFileInput" class="hidden-file" type="file" accept="image/*" onchange="SkillNestApp.handleAvatarFile(event)" />
+                  <button class="btn secondary small" type="button" onclick="document.getElementById('avatarFileInput').click()">${account.avatar ? "Replace picture" : "Upload picture"}</button>
+                  ${account.avatar ? `<button class="btn ghost small danger" type="button" onclick="SkillNestApp.removeAvatar()">Remove</button>` : ""}
+                </div>
+              </div>
+              <p class="muted-text">Images are resized to a small square. Without one, your initials are shown.</p>
+            </section>
+            <section class="profile-card settings-card">
+              <h2>Display name</h2>
+              <form class="settings-name-form" onsubmit="SkillNestApp.saveAccountSettings(event)">
+                <input id="settingsName" type="text" value="${C.escapeHtml(account.name || "")}" required />
+                <button class="btn primary small" type="submit">Save</button>
+              </form>
+            </section>
+            <section class="profile-card settings-card">
+              <h2>Account</h2>
+              <dl class="application-summary">
+                <div><dt>Username</dt><dd>@${C.escapeHtml(account.username || "-")}</dd></div>
+                <div><dt>Email</dt><dd>${C.escapeHtml(account.email || "-")}</dd></div>
+                <div><dt>Role</dt><dd>${C.escapeHtml(account.role || "-")}</dd></div>
+              </dl>
+              <p class="muted-text">Username and email changes aren't available in this preview.</p>
+            </section>
+          </div>
+        </div>
+      </main>
     `;
   }
 
@@ -732,10 +871,12 @@ window.SkillNestPages = (() => {
     browsePage,
     homePage,
     howItWorksPage,
+    messagesPage,
     operatorPage,
     hatchReviewPage,
     createHatchPage,
     profilePage,
+    settingsPage,
     signupPage,
     taskReviewPage,
     trustPage,
