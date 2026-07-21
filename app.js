@@ -41,6 +41,32 @@ window.SkillNestApp = (() => {
     });
   }
 
+  // ── Language ───────────────────────────────────────────────────────────────
+
+  function toggleLanguageMenu(event) {
+    event.stopPropagation();
+    const menu = document.getElementById("languageMenu");
+    if (!menu) return;
+    const open = menu.hidden;
+    menu.hidden = !open;
+    document.getElementById("languageButton")?.setAttribute("aria-expanded", String(open));
+  }
+
+  function closeLanguageMenu() {
+    const menu = document.getElementById("languageMenu");
+    if (menu && !menu.hidden) {
+      menu.hidden = true;
+      document.getElementById("languageButton")?.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  function chooseLanguage(code) {
+    closeLanguageMenu();
+    if (window.HatchI18n?.getLang() === code) return;
+    window.HatchI18n?.setLang(code);
+    render();
+  }
+
   function readJson(key, fallback) {
     try {
       return JSON.parse(localStorage.getItem(key)) || fallback;
@@ -4560,9 +4586,13 @@ window.SkillNestApp = (() => {
     // no hashchange when the target route is already active). The Appearance
     // toggle is a <button>, so it stays open for repeated flips.
     if (!event.target.closest(".profile-menu-wrap") || event.target.closest(".profile-menu a")) closeProfileMenu();
+    if (!event.target.closest(".language-picker")) closeLanguageMenu();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeProfileMenu();
+    if (event.key === "Escape") {
+      closeProfileMenu();
+      closeLanguageMenu();
+    }
   });
 
   // Theme toggle inside the dropdown: flips the theme in place (same reason
@@ -4846,6 +4876,7 @@ window.SkillNestApp = (() => {
       document.body.appendChild(root);
     }
     root.innerHTML = markup;
+    window.HatchI18n?.apply(root);
   }
 
   function closeModal() {
@@ -4951,6 +4982,8 @@ window.SkillNestApp = (() => {
       : null;
 
     document.getElementById("app").innerHTML = `<div class="app-shell">${C.nav(route, isLoggedIn(), account)}${page}${C.footer(isLoggedIn(), account)}</div>`;
+    // Pages render in English; translate the fresh tree in place before paint.
+    window.HatchI18n?.apply(document.getElementById("app"));
     if (menuWasOpen) {
       const menu = document.getElementById("profileMenu");
       if (menu) {
@@ -5044,6 +5077,8 @@ window.SkillNestApp = (() => {
     sendNewMessage,
     archiveConversation,
     toggleProfileMenu,
+    toggleLanguageMenu,
+    chooseLanguage,
     toggleDarkModeFromMenu,
     handleAvatarFile,
     removeAvatar,

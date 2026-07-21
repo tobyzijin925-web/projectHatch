@@ -4469,6 +4469,151 @@ dd {
   font-weight: 750;
 }
 
+/* ── Language picker ──────────────────────────────────────────────────────
+   Sits on its own row under the footer links, mirroring the quiet
+   language control common on marketing sites. The menu opens upward
+   because the picker is pinned to the bottom of the page. */
+.footer-bottom {
+  display: flex;
+  width: min(1160px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 0 0 28px;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+
+.language-picker {
+  position: relative;
+}
+
+.language-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+
+.language-button:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.language-globe {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.language-caret {
+  font-size: 0.62rem;
+  color: var(--muted);
+  transition: transform 0.16s ease;
+}
+
+.language-button[aria-expanded="true"] .language-caret {
+  transform: rotate(180deg);
+}
+
+.language-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 168px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.language-menu[hidden] {
+  display: none;
+}
+
+.language-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+
+.language-option:hover {
+  background: var(--neutral-pill-bg);
+}
+
+.language-option.active {
+  color: var(--accent-dark);
+}
+
+.language-option-check {
+  font-size: 0.85rem;
+}
+
+/* Settings page: segmented English / 中文 switch. */
+.settings-language-row {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-language-row .muted-text {
+  margin: 0;
+}
+
+.language-switch {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--neutral-pill-bg);
+}
+
+.language-switch-option {
+  padding: 8px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.language-switch-option:hover {
+  color: var(--ink);
+}
+
+.language-switch-option.active {
+  background: var(--surface);
+  color: var(--accent-dark);
+  box-shadow: 0 1px 3px rgba(var(--tint-rgb), 0.16);
+}
+
 /* Animated day/night switch: the thumb slides across the track while the sun
    and moon icons cross-fade. Light mode = sun/left, dark mode = moon/right. */
 .theme-switch {

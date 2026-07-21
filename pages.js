@@ -792,6 +792,17 @@ window.SkillNestPages = (() => {
               </form>
             </section>
             <section class="profile-card settings-card">
+              <h2>Language</h2>
+              <div class="settings-language-row">
+                <p class="muted-text">Hatch's interface language. Your Hatches and messages stay as written.</p>
+                <div class="language-switch" role="radiogroup" aria-label="Choose language">
+                  ${(window.HatchI18n?.languages() || []).map((lang) => `
+                    <button class="language-switch-option ${lang.code === window.HatchI18n.getLang() ? "active" : ""}" type="button" role="radio" aria-checked="${lang.code === window.HatchI18n.getLang()}" onclick="SkillNestApp.chooseLanguage('${lang.code}')">${C.escapeHtml(lang.native)}</button>
+                  `).join("")}
+                </div>
+              </div>
+            </section>
+            <section class="profile-card settings-card">
               <h2>Account</h2>
               <dl class="application-summary">
                 <div><dt>Username</dt><dd>@${C.escapeHtml(account.username || "-")}</dd></div>

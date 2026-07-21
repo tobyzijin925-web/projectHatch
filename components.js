@@ -2261,6 +2261,33 @@ window.SkillNestComponents = (() => {
     `);
   }
 
+  // Footer language control: a quiet button showing the active language that
+  // opens a small popover to switch. Marked data-no-i18n so the language names
+  // always render in their own language rather than the active one.
+  function languagePicker() {
+    const I18n = window.HatchI18n;
+    if (!I18n) return "";
+    const active = I18n.getLang();
+    const options = I18n.languages()
+      .map((lang) => `
+        <button class="language-option ${lang.code === active ? "active" : ""}" type="button" role="menuitemradio" aria-checked="${lang.code === active}" onclick="SkillNestApp.chooseLanguage('${lang.code}')">
+          <span class="language-option-name">${escapeHtml(lang.native)}</span>
+          ${lang.code === active ? `<span class="language-option-check" aria-hidden="true">✓</span>` : ""}
+        </button>
+      `)
+      .join("");
+    return `
+      <div class="language-picker">
+        <button class="language-button" type="button" id="languageButton" aria-haspopup="menu" aria-expanded="false" onclick="SkillNestApp.toggleLanguageMenu(event)">
+          <span class="language-globe" aria-hidden="true">🌐</span>
+          <span>${escapeHtml(I18n.languageOf(active).native)}</span>
+          <span class="language-caret" aria-hidden="true">▴</span>
+        </button>
+        <div class="language-menu" id="languageMenu" role="menu" hidden>${options}</div>
+      </div>
+    `;
+  }
+
   function footer(isLoggedIn, account = {}) {
     const profileLink = isLoggedIn ? `<a href="#profile">My Hatches</a>` : `<a href="#auth">Sign up / Log in</a>`;
     const isHatcher = isLoggedIn && /hatcher|operator/i.test(String(account.role || ""));
@@ -2293,6 +2320,9 @@ window.SkillNestComponents = (() => {
             ${profileLink}
           </div>
         </div>
+        <div class="footer-bottom">
+          ${languagePicker()}
+        </div>
       </footer>
     `;
   }
@@ -2307,6 +2337,7 @@ window.SkillNestComponents = (() => {
     field,
     footer,
     formatMessageTime,
+    languagePicker,
     messageBubble,
     newMessageModal,
     systemAvatar,
