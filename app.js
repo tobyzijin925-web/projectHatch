@@ -583,7 +583,7 @@ window.SkillNestApp = (() => {
     if (!el) return;
 
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
-      el.textContent = heroTypewriterPhrases[0];
+      el.textContent = window.HatchI18n?.t(heroTypewriterPhrases[0]) || heroTypewriterPhrases[0];
       return;
     }
 
@@ -594,7 +594,10 @@ window.SkillNestApp = (() => {
     const tick = () => {
       // Bail out if a re-render swapped the DOM under us.
       if (!document.body.contains(el)) return;
-      const phrase = heroTypewriterPhrases[phraseIndex];
+      // Translate the example per active language. Slicing runs on the
+      // translated string so the type/delete animation plays in Chinese too;
+      // CJK chars are single UTF-16 units, so slice(0, pos) stays glyph-safe.
+      const phrase = window.HatchI18n?.t(heroTypewriterPhrases[phraseIndex]) || heroTypewriterPhrases[phraseIndex];
       pos += deleting ? -1 : 1;
       el.textContent = phrase.slice(0, pos);
 
@@ -995,6 +998,15 @@ window.SkillNestApp = (() => {
       references: richUpdates.references || response.section_updates?.references,
       constraints: richUpdates.constraints || response.section_updates?.constraints,
     };
+    // The model writes budget/timeline straight into JSON fields here with no
+    // normalization pass, unlike a single clarify-turn answer. Reject a
+    // candidate that unambiguously belongs to the other field (most often a
+    // timeline phrase like "this week" landing in budget) so it falls through
+    // to the previous known-good value instead of overwriting it.
+    const budgetCandidate = sectionUpdates.budget || rawBrief.budget || "";
+    const timelineCandidate = sectionUpdates.timeline || rawBrief.deadline || "";
+    const safeBudgetCandidate = looksLikeTimelineNotBudget(budgetCandidate) ? "" : budgetCandidate;
+    const safeTimelineCandidate = looksLikeBudgetNotTimeline(timelineCandidate) ? "" : timelineCandidate;
     const sourceFallback = C.generateTaskBrief(payload.inputText || previous.sourceText || "", payload.files || previous.files || []);
     const hasProjectSignal = Boolean(
       response.task_detected === true
@@ -1060,7 +1072,14 @@ window.SkillNestApp = (() => {
       const responseSectionId = sectionIdFromUpdateKey(response.section_id);
       const responseKey = assistantKeyForSection(responseSectionId);
       const normalized = normalizeUserAnswer(responseKey, response.normalized_value, previous);
-      const nextBrief = updateBriefObject({ ...previous, updatedAt: new Date().toISOString() }, normalized.key, normalized.value);
+      // normalizeBudgetAnswer/normalizeTimelineAnswer return "" when the model
+      // labeled a cross-section value (e.g. "this week") as this section's
+      // answer — in that case leave the field as it was rather than blanking
+      // out a value the user already gave.
+      const rejectedCrossSection = (normalized.key === "suggestedBudget" || normalized.key === "suggestedTimeline") && !normalized.value;
+      const nextBrief = rejectedCrossSection
+        ? { ...previous, updatedAt: new Date().toISOString() }
+        : updateBriefObject({ ...previous, updatedAt: new Date().toISOString() }, normalized.key, normalized.value);
       if (response.expected_answer_type === "audience" || response.section_id === "audience" || payload.conversation_state?.expected_answer_type === "audience") {
         nextBrief.audience = normalizeUserAnswer("audience", response.normalized_value || payload.answer, previous).value;
         if (!nextBrief.businessType) nextBrief.businessType = nextBrief.audience;
@@ -1161,10 +1180,10 @@ window.SkillNestApp = (() => {
       industry: shouldUpdateBrief ? sectionUpdates.industry || rawBrief.industry || sourceFallback.industry || previous.industry || rawBrief.business_type || "" : previous.industry,
       category: shouldUpdateBrief ? richUpdates.category || response.task_type || rawBrief.category || sourceFallback.category || previous.category || "General" : previous.category,
       suggestedLevel: shouldUpdateBrief ? richUpdates.recommended_hatcher_level || richUpdates.recommendedLevel || rawBrief.operator_level || sourceFallback.suggestedLevel || previous.suggestedLevel || "L1" : previous.suggestedLevel,
-      suggestedBudget: shouldUpdateBrief ? sectionUpdates.budget || rawBrief.budget || previous.suggestedBudget || "" : previous.suggestedBudget,
-      suggestedTimeline: shouldUpdateBrief ? sectionUpdates.timeline || rawBrief.deadline || previous.suggestedTimeline || "" : previous.suggestedTimeline,
-      budgetKnown: shouldUpdateBrief ? Boolean(sectionUpdates.budget || rawBrief.budget || previous.budgetKnown) : previous.budgetKnown,
-      timelineKnown: shouldUpdateBrief ? Boolean(sectionUpdates.timeline || rawBrief.deadline || previous.timelineKnown) : previous.timelineKnown,
+      suggestedBudget: shouldUpdateBrief ? safeBudgetCandidate || previous.suggestedBudget || "" : previous.suggestedBudget,
+      suggestedTimeline: shouldUpdateBrief ? safeTimelineCandidate || previous.suggestedTimeline || "" : previous.suggestedTimeline,
+      budgetKnown: shouldUpdateBrief ? Boolean(safeBudgetCandidate || previous.budgetKnown) : previous.budgetKnown,
+      timelineKnown: shouldUpdateBrief ? Boolean(safeTimelineCandidate || previous.timelineKnown) : previous.timelineKnown,
       deliverables: shouldUpdateBrief ? Array.isArray(sectionUpdates.deliverables) && sectionUpdates.deliverables.length ? sectionUpdates.deliverables : deliverables.length ? deliverables : sourceFallback.deliverables || previous.deliverables || [] : previous.deliverables || [],
       scope: shouldUpdateBrief ? Array.isArray(richUpdates.scope) ? richUpdates.scope.filter(Boolean) : Array.isArray(rawBrief.scope) ? rawBrief.scope.filter(Boolean) : previous.scope || sourceFallback.scope || [] : previous.scope || [],
       knownRequirements: previous.knownRequirements || [],
@@ -1756,6 +1775,23 @@ window.SkillNestApp = (() => {
     return false;
   }
 
+  // The AI intake response occasionally mislabels which question an answer
+  // belongs to — most often a timeline reply like "this week" gets written
+  // into budget because the two questions are asked back to back. These catch
+  // the unambiguous cases (a phrase that is clearly a timeline, or clearly a
+  // price, and clearly not the other) so that value can be rejected instead of
+  // silently normalized into the wrong field ("This week" -> budget: "This Week").
+  function looksLikeTimelineNotBudget(value = "") {
+    return validTimelineAnswer(value) && !validBudgetAnswer(value);
+  }
+
+  function looksLikeBudgetNotTimeline(value = "") {
+    const clean = String(value || "").trim();
+    if (!clean) return false;
+    const priceShaped = /^\$|^(under|below|at least|over|above)\s*\$?\d|\$?\d+(?:,\d{3})?\s*(?:-|–|to)\s*\$?\d/i.test(clean);
+    return priceShaped && !validTimelineAnswer(clean);
+  }
+
   function validTextAnswer(answer = "", minimum = 3) {
     const clean = normalizedAnswer(answer);
     if (!clean || clean.length < minimum || looksLikeNoise(answer)) return false;
@@ -1954,6 +1990,7 @@ window.SkillNestApp = (() => {
 
   function normalizeBudgetAnswer(raw = "") {
     const clean = normalizedAnswer(raw);
+    if (looksLikeTimelineNotBudget(raw)) return "";
     if (uncertainAnswer(raw) || /\b(not sure|no idea|flexible|open|need guidance)\b/.test(clean)) return "Flexible / needs guidance";
     const rangeMatch = clean.match(/(?:\$?\s*)?(\d+(?:,\d{3})?)(?:\s*(?:-|to|and|–)\s*)(?:\$?\s*)?(\d+(?:,\d{3})?)/);
     if (rangeMatch) {
@@ -1978,6 +2015,7 @@ window.SkillNestApp = (() => {
 
   function normalizeTimelineAnswer(raw = "") {
     const clean = normalizedAnswer(raw);
+    if (looksLikeBudgetNotTimeline(raw)) return "";
     if (/\b(asap|urgent|immediately|as soon as possible)\b/.test(clean)) return "As soon as possible";
     if (/\b(no rush|flexible|whenever|not urgent)\b/.test(clean)) return "Flexible";
     if (/\bthis week\b/.test(clean)) return "This week";

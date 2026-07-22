@@ -86,9 +86,17 @@ window.HatchI18n = (() => {
     "Tell us everything.": "把情况都告诉我们。",
     "Don’t worry about making it perfect.": "不必追求完美。",
     "Just explain your situation naturally, as if you were talking to a colleague.": "像和同事聊天一样，自然地说明你的情况就好。",
+    "The more context you give us, the better we can understand your project. Hatch will organize everything for you.": "你提供的信息越多，我们就越能理解你的项目。Hatch 会帮你把一切整理好。",
+    "a website for my bakery that takes orders": "一个能接单的烘焙店网站",
+    "automating my invoices with AI": "用 AI 自动处理我的发票",
+    "a chatbot that answers my customers": "一个能回复客户的聊天机器人",
+    "turning messy spreadsheets into a dashboard": "把杂乱的表格变成一个仪表盘",
+    "a logo and brand kit for my startup": "为我的初创公司做 logo 和品牌套件",
+    "your turn — type what you need below": "轮到你了 —— 在下方输入你的需求",
     "Project description": "项目描述",
     "Describe the Hatch first, even with one short sentence.": "先描述你的 Hatch，哪怕只有一句话。",
     "Start typing, use voice input, or attach files to shape your Hatch.": "开始输入、使用语音，或上传文件来构建你的 Hatch。",
+    "Explain what you’re trying to accomplish, what you already have, and what a good result would look like...": "说明你想完成什么、已经有哪些材料，以及理想的结果是什么样的…",
     "Voice input": "语音输入",
     "Delete voice text": "删除语音文字",
     "Attach files": "上传文件",
@@ -183,6 +191,34 @@ window.HatchI18n = (() => {
     "Local intake fallback": "本地接入回退",
     "Checking AI connection...": "正在检查 AI 连接…",
     "Local fallback is being used. DeepSeek did not generate this response.": "当前使用本地回退，此回复并非由 DeepSeek 生成。",
+    // Chickie assistant — scripted lines and clarification prompts. (The live
+    // DeepSeek replies are dynamic and can't be dictionary-translated.)
+    "You": "你",
+    "Reply to Hatch...": "回复 Hatch…",
+    "Tell Hatch what you want to build or get done...": "告诉 Hatch 你想做什么或完成什么…",
+    "Tell me what you need done, who it is for, and what a good result would look like.": "告诉我你需要完成什么、面向谁，以及理想的结果是什么样的。",
+    "I think this captures what you mean. You can post it when you’re ready.": "我想这已经抓住了你的意思。准备好后就可以发布了。",
+    "What are you trying to accomplish?": "你想完成什么？",
+    "Describe the project in your own words": "用你自己的话描述这个项目",
+    "Type your answer": "输入你的回答",
+    "When would you like this completed?": "你希望什么时候完成？",
+    "This week": "本周",
+    "This month": "本月",
+    "Flexible": "灵活",
+    "Custom deadline": "自定义截止时间",
+    "What budget range are you comfortable with?": "你能接受的预算范围是多少？",
+    "Under $100": "100 美元以下",
+    "Custom budget": "自定义预算",
+    "What type of business or project is this for?": "这是为哪种业务或项目准备的？",
+    "Restaurant": "餐饮",
+    "Retail": "零售",
+    "Professional Services": "专业服务",
+    "Education": "教育",
+    "Other": "其他",
+    "Type of business": "业务类型",
+    "Create social posts": "制作社交媒体帖子",
+    "Build a simple website": "搭建一个简单网站",
+    "Organize customer data": "整理客户数据",
 
     // ── Review / submit ──────────────────────────────────────────────────────
     "Review and Post": "确认并发布",
@@ -450,7 +486,12 @@ window.HatchI18n = (() => {
   // Attributes worth translating. Everything else (href, class, data-*) is
   // structural and must be left alone.
   const ATTRS = ["placeholder", "title", "aria-label", "alt"];
-  const SKIP_TAGS = new Set(["SCRIPT", "STYLE", "TEXTAREA", "CODE", "PRE"]);
+  // Whole subtree left untouched — attributes and text alike.
+  const SKIP_SUBTREE = new Set(["SCRIPT", "STYLE", "CODE", "PRE"]);
+  // Element is still visited so its attributes (e.g. a textarea's placeholder)
+  // translate, but its text content is left as-is — that text is the user's
+  // typed value, not UI chrome.
+  const SKIP_TEXT = new Set(["TEXTAREA"]);
 
   let current = read();
 
@@ -533,8 +574,12 @@ window.HatchI18n = (() => {
 
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
-        if (node.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
-        if (SKIP_TAGS.has(node.tagName) || node.hasAttribute("data-no-i18n")) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          // A textarea's text node is its value — translate the placeholder
+          // (an attribute) but never the value itself.
+          return SKIP_TEXT.has(node.parentNode?.tagName) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+        }
+        if (SKIP_SUBTREE.has(node.tagName) || node.hasAttribute("data-no-i18n")) {
           return NodeFilter.FILTER_REJECT;
         }
         return NodeFilter.FILTER_ACCEPT;
