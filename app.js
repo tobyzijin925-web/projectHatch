@@ -3633,12 +3633,33 @@ window.SkillNestApp = (() => {
     localStorage.removeItem("hatchCompletedSections");
     localStorage.removeItem("hatchSectionMessages");
     localStorage.removeItem("hatchBriefEditKey");
+    localStorage.removeItem("hatchAnsweredTurnIds");
     localStorage.removeItem("hatchShowFinalEditSections");
     localStorage.removeItem("hatchReturnToFinalReview");
     localStorage.removeItem("hatchFinalReviewDismissed");
     localStorage.removeItem("hatchTypedCount");
     localStorage.removeItem("hatchAssistantThinking");
-    if (options.redirect !== false) setRoute("home");
+    localStorage.removeItem("hatchDraftSavedAt");
+    // Debug/connection state from the old conversation, so the AI panel and
+    // fallback banner don't show stale info until the new conversation's
+    // first response lands.
+    localStorage.removeItem("hatchAiControllerState");
+    localStorage.removeItem("hatchAiLastError");
+    localStorage.removeItem("hatchAiIntakeMode");
+    if (options.redirect !== false) setRoute(options.route || "home");
+  }
+
+  // Entry point for every "New Hatch" / "Post a Hatch" / "Start a Hatch" link.
+  // A conversation you don't submit is never cleared on its own — abandoning
+  // it (navigating to browse, profile, home) leaves the draft text, files,
+  // brief, and chat history sitting in localStorage indefinitely. Without this,
+  // the next "new" Hatch silently resumes that leftover conversation instead
+  // of starting blank. Saving progress is a separate, explicit action (the
+  // "Save draft" button already in the chat) — starting new always resets.
+  function startNewHatch() {
+    clearTaskDraft({ redirect: false });
+    if (currentRoute() === "create-hatch") render();
+    else setRoute("create-hatch");
   }
 
   function finishAuth(account) {
@@ -5261,6 +5282,7 @@ window.SkillNestApp = (() => {
     showOperatorTab,
     simulateVoiceInput,
     socialLogin,
+    startNewHatch,
     startTaskFlow,
     submitOperator,
     submitReviewedHatch,

@@ -69,7 +69,7 @@ window.SkillNestPages = (() => {
           <div class="hatch-review-empty">
             <h1>Nothing to review yet.</h1>
             <p>Describe your Hatch first — once it’s shaped, you can review and post it here.</p>
-            <a class="btn primary" href="#create-hatch">Start a Hatch</a>
+            <a class="btn primary" href="#create-hatch" onclick="SkillNestApp.startNewHatch()">Start a Hatch</a>
           </div>
         </main>
       `;
@@ -602,7 +602,7 @@ window.SkillNestPages = (() => {
             </div>
           </div>
           <div class="profile-actions">
-            <button class="btn secondary" type="button" onclick="SkillNestApp.setRoute('create-hatch')">Post a Hatch</button>
+            <button class="btn secondary" type="button" onclick="SkillNestApp.startNewHatch()">Post a Hatch</button>
             <button class="btn secondary" type="button" onclick="SkillNestApp.setRoute('browse')">Browse Hatches</button>
             <button class="btn secondary" type="button" onclick="SkillNestApp.setRoute('settings')">Manage account</button>
             <button class="btn ghost" type="button" onclick="SkillNestApp.logout()">Log out</button>
@@ -629,7 +629,7 @@ window.SkillNestPages = (() => {
           <section class="profile-card wide">
             <div class="card-title-row">
               <h2>My Hatches</h2>
-              <button class="btn secondary small" type="button" onclick="SkillNestApp.setRoute('create-hatch')">New Hatch</button>
+              <button class="btn secondary small" type="button" onclick="SkillNestApp.startNewHatch()">New Hatch</button>
             </div>
             ${miniTaskList(postedTasks, "Hatches you post will appear here.", { removable: true, type: "posted" })}
           </section>

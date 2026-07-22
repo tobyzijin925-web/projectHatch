@@ -2366,7 +2366,7 @@ window.SkillNestComponents = (() => {
                 </span>
               </span>
             </button>
-            <a href="#create-hatch">Post a Hatch</a>
+            <a href="#create-hatch" onclick="SkillNestApp.startNewHatch()">Post a Hatch</a>
             <a href="#browse">Browse Hatches</a>
             <a href="#verified-work">Verified Results</a>
             ${hatcherLink}
