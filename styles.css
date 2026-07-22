@@ -2241,7 +2241,6 @@ dd {
   max-height: min(62vh, 680px);
   overflow: auto;
   padding-right: 4px;
-  scroll-behavior: smooth;
 }
 
 .assistant-message {
