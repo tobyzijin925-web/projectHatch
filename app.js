@@ -5111,8 +5111,8 @@ window.SkillNestApp = (() => {
         ? Pages.operatorPage(account, getOperatorWizard(), isLoggedIn())
       : route === "how-it-works"
         ? Pages.howItWorksPage()
-      : route === "trust"
-        ? Pages.trustPage()
+      : route === "about"
+        ? Pages.aboutPage()
       : route === "browse"
         ? Pages.browsePage(browsableTasks())
       : route === "verified-work"

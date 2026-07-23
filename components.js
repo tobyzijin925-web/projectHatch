@@ -1382,12 +1382,13 @@ window.SkillNestComponents = (() => {
       : `<a class="nav-login" href="#auth">Log in</a>
          <button class="btn primary nav-cta" type="button" onclick="SkillNestApp.setRoute('signup')">Get Hatch free</button>`;
 
-    // Existing Hatchers (signed in with a Hatcher/Operator role) see a "leveling
-    // up" link to the levels/ranking guide; everyone else gets the "Become a
-    // Hatcher" application entry point.
+    // Existing Hatchers (signed in with a Hatcher/Operator role) already reach
+    // the levels/ranking guide through "About Hatch" below, so they don't need
+    // a second, differently-labeled link to the same page — only non-Hatchers
+    // get the distinct "apply" call to action.
     const isHatcher = isLoggedIn && /hatcher|operator/i.test(String(account.role || ""));
     const hatcherLink = isHatcher
-      ? `<a href="#trust" class="${active === "trust" ? "active" : ""}">Leveling up as a Hatcher</a>`
+      ? ""
       : `<a href="#operator" class="${active === "operator" ? "active" : ""}">Become a Hatcher</a>`;
 
     return `
@@ -1401,7 +1402,7 @@ window.SkillNestComponents = (() => {
               <a href="#browse" class="${active === "browse" ? "active" : ""}">Hatches</a>
               <a href="#verified-work" class="${active === "verified-work" ? "active" : ""}">Verified Results</a>
               ${hatcherLink}
-              <a href="#trust" class="secondary-link ${active === "trust" ? "active" : ""}">Trust</a>
+              <a href="#about" class="secondary-link ${active === "about" ? "active" : ""}">About Hatch</a>
             </div>
           </div>
           <div class="nav-actions">
@@ -2344,10 +2345,11 @@ window.SkillNestComponents = (() => {
 
   function footer(isLoggedIn, account = {}) {
     const profileLink = isLoggedIn ? `<a href="#profile">My Hatches</a>` : `<a href="#auth">Sign up / Log in</a>`;
+    // Hatchers already reach the levels/ranking content through "About Hatch"
+    // below, so they don't get a second link to the same page under a
+    // different label — only non-Hatchers get the distinct "apply" CTA.
     const isHatcher = isLoggedIn && /hatcher|operator/i.test(String(account.role || ""));
-    const hatcherLink = isHatcher
-      ? `<a href="#trust">Leveling up as a Hatcher</a>`
-      : `<a href="#operator">Become a Hatcher</a>`;
+    const hatcherLink = isHatcher ? "" : `<a href="#operator">Become a Hatcher</a>`;
     return `
       <footer class="footer">
         <div class="footer-inner">
@@ -2370,7 +2372,7 @@ window.SkillNestComponents = (() => {
             <a href="#browse">Browse Hatches</a>
             <a href="#verified-work">Verified Results</a>
             ${hatcherLink}
-            <a href="#trust">Trust</a>
+            <a href="#about">About Hatch</a>
             ${profileLink}
           </div>
         </div>

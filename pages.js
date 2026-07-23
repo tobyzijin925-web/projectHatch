@@ -977,7 +977,11 @@ window.SkillNestPages = (() => {
     `;
   }
 
-  function trustPage() {
+  // Single destination for "learn more about Hatch" — folds together what
+  // used to be two separate nav links to the same trust/levels content, plus
+  // the process walkthrough and FAQ, neither of which lived anywhere reachable
+  // from the menu before this.
+  function aboutPage() {
     const rankingSignals = [
       ["Hatched work", "Real delivery history"],
       ["Client rating", "Quality from past work"],
@@ -985,11 +989,39 @@ window.SkillNestPages = (() => {
       ["Industry experience", "Relevant business context"],
     ];
 
+    const howItWorksSteps = [
+      ["1", "Describe the work", "Talk to Chickie, Hatch's AI intake assistant, in plain language. It asks only what's still unclear and shapes everything into a structured brief."],
+      ["2", "Review and post", "Check the brief, adjust anything that's off, and post it. Hatchers see the exact brief you approved — no re-explaining the project."],
+      ["3", "A Hatcher claims it", "A verified Hatcher matched to the work claims the Hatch and gets started."],
+      ["4", "Submit and review", "The Hatcher submits their work. You review it, request changes if something's missing, or approve it as complete."],
+      ["5", "Resolve issues if they come up", "Either side can open a dispute if something's not working out. A Hatch can also be cancelled by the client any time before it's claimed."],
+    ];
+
+    const faq = [
+      ["What exactly is a Hatch?", "One piece of business work — content, a website, a workflow, research — scoped into a brief a Hatcher can act on without back-and-forth."],
+      ["Who are Hatchers?", "Verified people who deliver the work. They're leveled L1 through L4 by the complexity of Hatches they've actually completed, not by self-reported skills."],
+      ["What if the work isn't right?", "Request changes before approving. If it still isn't resolved, either you or the Hatcher can open a dispute."],
+      ["Can I cancel a Hatch?", "Yes — the client who posted it can cancel any time before a Hatcher claims it."],
+      ["How is pricing set?", "You set a budget range when you post. The Hatch's level and expected timeline are part of what shapes a fair number."],
+    ];
+
     return `
       <main>
         <section class="section page trust-page">
-          <div class="section-label">Trust</div>
-          <h1>Trust and ranking</h1>
+          <div class="section-label">About</div>
+          <h1>About Hatch.</h1>
+          <p class="section-kicker about-intro">Hatch pairs an AI intake assistant with verified Hatchers so a messy idea becomes a clear, executable brief — then real, delivered work. Clients describe what they need in plain language; Hatchers deliver it and build a track record that speaks for itself.</p>
+          <div class="trust-block">
+            <div class="section-head">
+              <div>
+                <h2>How Hatch works</h2>
+                <p class="section-kicker">From a rough idea to delivered work, step by step.</p>
+              </div>
+            </div>
+            <div class="level-grid mature-grid">
+              ${howItWorksSteps.map(([step, title, text]) => `<article class="level-card"><span>${step}</span><h3>${title}</h3><p>${text}</p></article>`).join("")}
+            </div>
+          </div>
           <div class="trust-block">
             <div class="section-head">
               <div>
@@ -1021,12 +1053,24 @@ window.SkillNestPages = (() => {
             </div>
             <div class="operator-grid section-nested mature-grid">${operators.map((operator) => C.operatorCard(operator)).join("")}</div>
           </div>
+          <div class="trust-block">
+            <div class="section-head">
+              <div>
+                <h2>Frequently asked</h2>
+                <p class="section-kicker">Quick answers before you post or apply.</p>
+              </div>
+            </div>
+            <div class="trust-grid mature-grid">
+              ${faq.map(([question, answer]) => `<article class="trust-card"><h3>${question}</h3><p>${answer}</p></article>`).join("")}
+            </div>
+          </div>
         </section>
       </main>
     `;
   }
 
   return {
+    aboutPage,
     authPage,
     browsePage,
     homePage,
@@ -1039,7 +1083,6 @@ window.SkillNestPages = (() => {
     settingsPage,
     signupPage,
     taskReviewPage,
-    trustPage,
     verifiedWorkPage,
   };
 })();
