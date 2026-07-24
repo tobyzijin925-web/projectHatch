@@ -166,22 +166,53 @@ a {
   align-items: center;
 }
 
+/* Wraps the "Browse" dropdown and the rest of the nav links so the row can
+   shrink/scroll as a unit while the dropdown's menu — a child of
+   .nav-browse-dropdown, not of the scrollable .nav-links below — stays
+   outside the clipped area and never gets cut off. */
+.nav-primary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .nav-links {
   gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
   color: var(--text-strong);
   font-size: 0.94rem;
   font-weight: 700;
+  /* When there isn't room for every link on one line, scroll the row instead
+     of letting an individual label wrap onto two lines — a wrapped label sits
+     taller than its single-line neighbors, which is what throws the whole bar
+     out of vertical alignment. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nav-links::-webkit-scrollbar {
+  display: none;
 }
 
 .nav-actions {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
+}
+
+.nav-cta {
+  white-space: nowrap;
 }
 
 .nav-links a {
   padding: 10px 12px;
   border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: background 160ms ease, color 160ms ease;
 }
 
@@ -194,6 +225,81 @@ a {
 .nav-links .secondary-link {
   color: var(--muted);
   font-weight: 700;
+}
+
+/* "Browse" nav dropdown: Hatches + Hatchers collapsed under one trigger, same
+   open/close mechanics as the footer language picker but opening downward
+   since this lives in the top nav instead of the footer. */
+.nav-browse-dropdown {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.nav-browse-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.nav-browse-button:hover,
+.nav-browse-button.active {
+  background: rgba(var(--tint-rgb), 0.07);
+  color: var(--ink);
+}
+
+.nav-browse-caret {
+  font-size: 0.62rem;
+  color: var(--muted);
+  transition: transform 0.16s ease;
+}
+
+.nav-browse-button[aria-expanded="true"] .nav-browse-caret {
+  transform: rotate(180deg);
+}
+
+.nav-browse-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.nav-browse-menu[hidden] {
+  display: none;
+}
+
+.nav-browse-menu a {
+  padding: 9px 12px;
+  border-radius: 9px;
+  color: var(--text-strong);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.nav-browse-menu a:hover {
+  background: var(--neutral-pill-bg);
+}
+
+.nav-browse-menu a.active {
+  color: var(--accent-dark);
 }
 
 .nav-left {
@@ -479,6 +585,26 @@ html.dark-mode .typewriter-pill {
   gap: 18px;
   width: min(920px, 100%);
   margin: 18px auto 0;
+}
+
+.messaging-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  width: min(980px, 100%);
+  margin: 18px auto 0;
+}
+
+.messaging-feature-grid .audience-card {
+  text-align: left;
+}
+
+.messaging-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 28px auto 0;
 }
 
 .audience-card {
@@ -4991,6 +5117,25 @@ html.dark-mode .btn.secondary:hover {
   transform: translateY(0);
 }
 
+.page-enter {
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 520ms ease, transform 520ms ease;
+}
+
+.page-enter.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 @media (max-width: 960px) {
   .nav {
     flex-wrap: wrap;
@@ -5012,10 +5157,9 @@ html.dark-mode .btn.secondary:hover {
     display: contents;
   }
 
-  .nav-links {
+  .nav-primary {
     order: 3;
     width: 100%;
-    overflow-x: auto;
   }
 
   .nav-actions {
@@ -5085,7 +5229,8 @@ html.dark-mode .btn.secondary:hover {
   .brief-card-grid,
   .brief-editor-row,
   .brief-meta-grid,
-  .detail-grid {
+  .detail-grid,
+  .messaging-feature-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -5173,7 +5318,8 @@ html.dark-mode .btn.secondary:hover {
     grid-template-columns: 1fr;
   }
 
-  .audience-grid {
+  .audience-grid,
+  .messaging-feature-grid {
     grid-template-columns: 1fr;
   }
 

@@ -21,6 +21,7 @@ window.HatchI18n = (() => {
   // (after whitespace collapsing). "Hatch" stays as the brand name.
   const ZH = {
     // ── Navigation, footer, account ──────────────────────────────────────────
+    "Browse": "浏览",
     "Hatches": "Hatch 任务",
     "Browse Hatches": "浏览 Hatch",
     "Hatchers": "Hatcher",
@@ -112,6 +113,18 @@ window.HatchI18n = (() => {
     "References": "参考资料",
     "Focus the project description box": "定位到项目描述框",
     "Task input options": "任务输入选项",
+    // ── Messaging feature section (homepage) ─────────────────────────────────
+    "Messaging": "消息功能",
+    "Talk directly. No middleman.": "直接沟通，没有中间商。",
+    "Clients and Hatchers message each other straight through Hatch — ask a question, share a file, or check on progress, without leaving the platform.": "客户和 Hatcher 直接在 Hatch 内互相发消息 —— 提问、分享文件、了解进度，全程无需离开平台。",
+    "Direct threads": "一对一会话",
+    "Message any Hatcher before or during a Hatch — no gig-site inbox, no waiting on a bid.": "在 Hatch 开始前或进行中，随时给任意 Hatcher 发消息 —— 没有零工平台式收件箱，也不用等报价。",
+    "Tied to the work": "与工作绑定",
+    "Tag a thread to its Hatch so context and files stay attached to the project instead of scattered across email.": "把会话与对应的 Hatch 关联，背景信息和文件都留在项目里，而不是散落在邮件中。",
+    "Nothing missed": "不错过任何消息",
+    "Unread counts, automatic updates, and archiving keep active conversations easy to find.": "未读数、自动更新和归档功能，让进行中的对话始终容易找到。",
+    "Browse Hatchers": "浏览 Hatcher",
+
     "Why Hatch": "为什么选择 Hatch",
     "Not another gig marketplace.": "不是又一个零工平台。",
     "Traditional marketplaces": "传统平台",

@@ -60,6 +60,24 @@ window.SkillNestApp = (() => {
     }
   }
 
+  // "Browse" nav dropdown — same open/close mechanics as the language menu.
+  function toggleBrowseMenu(event) {
+    event.stopPropagation();
+    const menu = document.getElementById("navBrowseMenu");
+    if (!menu) return;
+    const open = menu.hidden;
+    menu.hidden = !open;
+    document.getElementById("navBrowseButton")?.setAttribute("aria-expanded", String(open));
+  }
+
+  function closeBrowseMenu() {
+    const menu = document.getElementById("navBrowseMenu");
+    if (menu && !menu.hidden) {
+      menu.hidden = true;
+      document.getElementById("navBrowseButton")?.setAttribute("aria-expanded", "false");
+    }
+  }
+
   function chooseLanguage(code) {
     closeLanguageMenu();
     if (window.HatchI18n?.getLang() === code) return;
@@ -4841,11 +4859,13 @@ window.SkillNestApp = (() => {
     // toggle is a <button>, so it stays open for repeated flips.
     if (!event.target.closest(".profile-menu-wrap") || event.target.closest(".profile-menu a")) closeProfileMenu();
     if (!event.target.closest(".language-picker")) closeLanguageMenu();
+    if (!event.target.closest(".nav-browse-dropdown") || event.target.closest(".nav-browse-menu a")) closeBrowseMenu();
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeProfileMenu();
       closeLanguageMenu();
+      closeBrowseMenu();
     }
   });
 
@@ -5237,7 +5257,7 @@ window.SkillNestApp = (() => {
       }
       : null;
 
-    document.getElementById("app").innerHTML = `<div class="app-shell">${C.nav(route, isLoggedIn(), account)}${page}${C.footer(isLoggedIn(), account)}</div>`;
+    document.getElementById("app").innerHTML = `<div class="app-shell">${C.nav(route, isLoggedIn(), account)}<div class="page-enter">${page}</div>${C.footer(isLoggedIn(), account)}</div>`;
     // Pages render in English; translate the fresh tree in place before paint.
     window.HatchI18n?.apply(document.getElementById("app"));
     if (menuWasOpen) {
@@ -5248,7 +5268,7 @@ window.SkillNestApp = (() => {
       }
     }
     requestAnimationFrame(() => {
-      document.querySelectorAll(".reveal").forEach((el) => el.classList.add("visible"));
+      document.querySelectorAll(".reveal, .page-enter").forEach((el) => el.classList.add("visible"));
       syncMissionCardStates();
       renderFilePreviews();
       scrollAssistantToLatest();
@@ -5341,6 +5361,7 @@ window.SkillNestApp = (() => {
     archiveConversation,
     toggleProfileMenu,
     toggleLanguageMenu,
+    toggleBrowseMenu,
     chooseLanguage,
     setContentLanguage,
     setForeignHatchHandling,

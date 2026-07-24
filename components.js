@@ -1367,6 +1367,30 @@ window.SkillNestComponents = (() => {
     `;
   }
 
+  // "Hatches" and "Hatchers" collapsed into one "Browse" trigger with a
+  // dropdown, so the top nav doesn't run out of room as more destinations get
+  // added — the same crowding problem the "About Hatch" merge solved earlier.
+  function browseNavDropdown(active) {
+    const options = [
+      ["browse", "#browse", "Hatches"],
+      ["hatchers", "#hatchers", "Hatchers"],
+    ];
+    const isActive = options.some(([key]) => key === active);
+    return `
+      <div class="nav-browse-dropdown">
+        <button class="nav-browse-button ${isActive ? "active" : ""}" type="button" id="navBrowseButton" aria-haspopup="menu" aria-expanded="false" onclick="SkillNestApp.toggleBrowseMenu(event)">
+          <span>Browse</span>
+          <span class="nav-browse-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="nav-browse-menu" id="navBrowseMenu" role="menu" hidden>
+          ${options.map(([key, href, label]) => `
+            <a href="${href}" role="menuitem" class="${active === key ? "active" : ""}">${label}</a>
+          `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
   function nav(active, isLoggedIn, account) {
     // Notion-style split: logo + links grouped on the left, quiet "Log in"
     // link plus one solid CTA on the right. Signed-in users get the messages
@@ -1398,12 +1422,13 @@ window.SkillNestComponents = (() => {
             <a class="brand" href="#home" aria-label="Hatch home">
               <img class="brand-logo" src="${document.documentElement.classList.contains("dark-mode") ? "assets/hatchlogo-dark.png" : "assets/hatchlogo.png"}?v=2" alt="Hatch logo" />
             </a>
-            <div class="nav-links">
-              <a href="#browse" class="${active === "browse" ? "active" : ""}">Hatches</a>
-              <a href="#hatchers" class="${active === "hatchers" ? "active" : ""}">Hatchers</a>
-              <a href="#verified-work" class="${active === "verified-work" ? "active" : ""}">Verified Results</a>
-              ${hatcherLink}
-              <a href="#about" class="secondary-link ${active === "about" ? "active" : ""}">About Hatch</a>
+            <div class="nav-primary">
+              ${browseNavDropdown(active)}
+              <div class="nav-links">
+                <a href="#verified-work" class="${active === "verified-work" ? "active" : ""}">Verified Results</a>
+                ${hatcherLink}
+                <a href="#about" class="secondary-link ${active === "about" ? "active" : ""}">About Hatch</a>
+              </div>
             </div>
           </div>
           <div class="nav-actions">
@@ -1484,6 +1509,40 @@ window.SkillNestComponents = (() => {
           <span>References</span>
         </div>
       </div>
+    `;
+  }
+
+  // Right under the hero, so a first-time visitor sees messaging is a real,
+  // built-in feature — not just a small icon that appears after logging in.
+  function messagingFeatureSection() {
+    const features = [
+      ["💬", "Direct threads", "Message any Hatcher before or during a Hatch — no gig-site inbox, no waiting on a bid."],
+      ["📎", "Tied to the work", "Tag a thread to its Hatch so context and files stay attached to the project instead of scattered across email."],
+      ["🔔", "Nothing missed", "Unread counts, automatic updates, and archiving keep active conversations easy to find."],
+    ];
+    return `
+      <section class="section messaging-section">
+        <div class="section-head centered-head">
+          <div>
+            <div class="section-label">Messaging</div>
+            <h2>Talk directly. No middleman.</h2>
+            <p class="section-kicker">Clients and Hatchers message each other straight through Hatch — ask a question, share a file, or check on progress, without leaving the platform.</p>
+          </div>
+        </div>
+        <div class="messaging-feature-grid">
+          ${features.map(([icon, title, text]) => `
+            <article class="audience-card reveal">
+              <div class="stage-icon" aria-hidden="true">${icon}</div>
+              <h3>${title}</h3>
+              <p>${text}</p>
+            </article>
+          `).join("")}
+        </div>
+        <div class="messaging-actions">
+          <button class="btn primary" type="button" onclick="SkillNestApp.setRoute('hatchers')">Browse Hatchers</button>
+          <button class="btn secondary" type="button" onclick="SkillNestApp.setRoute('messages')">Open Messages</button>
+        </div>
+      </section>
     `;
   }
 
@@ -2449,6 +2508,7 @@ window.SkillNestComponents = (() => {
     hero,
     taskComposer,
     hatchLifecycleSection,
+    messagingFeatureSection,
     whyHatchSection,
     clarificationCardMarkup,
     isLowQualityProjectInput,

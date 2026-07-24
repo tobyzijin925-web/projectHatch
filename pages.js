@@ -16,6 +16,7 @@ window.SkillNestPages = (() => {
     return `
       <main>
         ${C.hero(draftText, files)}
+        ${C.messagingFeatureSection()}
         ${C.whyHatchSection()}
         ${C.recentVerifiedWorkSection()}
         ${C.hatchLifecycleSection()}
