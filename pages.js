@@ -231,6 +231,76 @@ window.SkillNestPages = (() => {
     `;
   }
 
+  // Finding a person instead of a task: same browse-and-filter shape as
+  // browsePage, but the grid lays each Hatcher out as a wide row (photo left,
+  // details right) two per row, rather than a task-style tile grid — a person
+  // reads better as a row than a card.
+  function findHatchersPage(allOperators = operators) {
+    const uniqueLevels = [...new Set(allOperators.map((op) => C.hatcherLevelBucket(op.level)).filter(Boolean))]
+      .sort((a, b) => C.levelSortValue(a) - C.levelSortValue(b));
+    const industries = [...new Set(allOperators.flatMap((op) => op.industries || []))];
+
+    return `
+      <main>
+        <section class="section page" id="hatchers">
+          <div class="section-head compact-head">
+            <div>
+              <div class="section-label">Find Hatchers</div>
+              <h2>Hatchers</h2>
+              <p class="section-kicker">Browse verified Hatchers and message the right one directly.</p>
+            </div>
+          </div>
+          <div class="browse-layout">
+            <aside class="browse-sidebar" aria-label="Hatcher filters">
+              <div class="filter-group">
+                <label class="filter-heading" for="hatcherSearch">Search</label>
+                <input id="hatcherSearch" type="search" placeholder="Name, industry, or tool..." oninput="SkillNestApp.applyHatcherFilters()" />
+              </div>
+              <div class="filter-group">
+                <div class="filter-heading">Level</div>
+                <div class="filter-options">
+                  ${uniqueLevels.map((level) => `
+                    <label class="filter-check">
+                      <input type="checkbox" class="hatcher-level-check" value="${C.escapeHtml(level)}" onchange="SkillNestApp.applyHatcherFilters()" />
+                      <span>${C.escapeHtml(level)}</span>
+                    </label>
+                  `).join("")}
+                </div>
+              </div>
+              <div class="filter-group">
+                <label class="filter-heading" for="hatcherIndustryFilter">Industry</label>
+                <select id="hatcherIndustryFilter" onchange="SkillNestApp.applyHatcherFilters()">
+                  <option value="">All industries</option>
+                  ${industries.map((industry) => `<option value="${C.escapeHtml(industry)}">${industry}</option>`).join("")}
+                </select>
+              </div>
+              <button class="btn ghost small filter-reset" type="button" onclick="SkillNestApp.resetHatcherFilters()">Clear filters</button>
+            </aside>
+            <div class="browse-main">
+              <div class="browse-toolbar">
+                <span class="result-hint" id="hatcherResultHint"></span>
+                <label class="sort-control">
+                  <span>Sort by</span>
+                  <select id="hatcherSortFilter" onchange="SkillNestApp.applyHatcherFilters()">
+                    <option value="">Featured</option>
+                    <option value="rating">Rating: high to low</option>
+                    <option value="completed">Most Hatched</option>
+                    <option value="ontime">On-time: high to low</option>
+                    <option value="level">Level: L1 → L3</option>
+                  </select>
+                </label>
+              </div>
+              <div class="hatcher-directory-grid" id="hatcherDirectoryGrid">
+                ${allOperators.map((operator) => C.hatcherDirectoryCard(operator)).join("")}
+              </div>
+              <div class="empty-state" id="emptyHatchers">No Hatchers match those filters.</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    `;
+  }
+
   function verifiedWorkPage() {
     const orderedWork = [...completedHatches].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
     return `
@@ -1073,6 +1143,7 @@ window.SkillNestPages = (() => {
     aboutPage,
     authPage,
     browsePage,
+    findHatchersPage,
     homePage,
     howItWorksPage,
     messagesPage,

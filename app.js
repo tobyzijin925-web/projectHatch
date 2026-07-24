@@ -3668,6 +3668,13 @@ window.SkillNestApp = (() => {
       submitReviewedHatch();
       return;
     }
+    const pendingMessageTo = localStorage.getItem("hatchPendingMessageTo");
+    if (pendingMessageTo) {
+      localStorage.removeItem("hatchPendingMessageTo");
+      setRoute(accountRoute(account));
+      window.setTimeout(() => messageHatcher(pendingMessageTo), 60);
+      return;
+    }
     if (completePendingMission()) return;
     setRoute(accountRoute(account));
   }
@@ -3944,6 +3951,71 @@ window.SkillNestApp = (() => {
       if (maxInput) { maxInput.value = maxInput.max; handleRangeInput(id, "max"); }
     });
     applyTaskFilters();
+  }
+
+  // Same search/filter/sort shape as applyTaskFilters, over the Hatcher
+  // directory grid instead of the Hatch grid.
+  function applyHatcherFilters() {
+    const query = (document.getElementById("hatcherSearch")?.value || "").toLowerCase();
+    const levels = [...document.querySelectorAll(".hatcher-level-check:checked")].map((el) => el.value);
+    const industry = document.getElementById("hatcherIndustryFilter")?.value || "";
+    const sort = document.getElementById("hatcherSortFilter")?.value || "";
+    const grid = document.getElementById("hatcherDirectoryGrid");
+    if (!grid) return;
+    const cards = [...grid.querySelectorAll(".hatcher-row-card")];
+
+    cards.forEach((card, index) => {
+      if (card.dataset.order === undefined) card.dataset.order = String(index);
+    });
+
+    // Rating/completed/on-time sort high-to-low (best first); level sorts
+    // low-to-high (L1 before L3), matching the Hatch level sort.
+    const sortKey = { rating: "rating", completed: "completed", ontime: "ontime", level: "levelNum" }[sort];
+    const descending = sort === "rating" || sort === "completed" || sort === "ontime";
+    const sortValue = (card) => (sortKey ? Number(card.dataset[sortKey]) : Number(card.dataset.order));
+    const ordered = [...cards].sort((a, b) => {
+      const diff = descending ? sortValue(b) - sortValue(a) : sortValue(a) - sortValue(b);
+      return (sortKey ? diff : 0) || Number(a.dataset.order) - Number(b.dataset.order);
+    });
+    ordered.forEach((card) => grid.appendChild(card));
+
+    let visibleCount = 0;
+    cards.forEach((card) => {
+      const isVisible =
+        (!query || card.dataset.search.toLowerCase().includes(query)) &&
+        (!levels.length || levels.includes(card.dataset.level)) &&
+        (!industry || card.dataset.industryList.split("|").includes(industry));
+      card.hidden = !isVisible;
+      if (isVisible) visibleCount += 1;
+    });
+
+    document.getElementById("emptyHatchers")?.classList.toggle("show", visibleCount === 0);
+    const hint = document.getElementById("hatcherResultHint");
+    if (hint) hint.textContent = `${visibleCount} ${visibleCount === 1 ? "Hatcher" : "Hatchers"}`;
+  }
+
+  function resetHatcherFilters() {
+    const search = document.getElementById("hatcherSearch");
+    if (search) search.value = "";
+    const industry = document.getElementById("hatcherIndustryFilter");
+    if (industry) industry.value = "";
+    const sort = document.getElementById("hatcherSortFilter");
+    if (sort) sort.value = "";
+    document.querySelectorAll(".hatcher-level-check:checked").forEach((el) => { el.checked = false; });
+    applyHatcherFilters();
+  }
+
+  // Login-gated compose entry point for the Hatcher directory: the row card's
+  // quick "Message" button and the expanded profile modal both funnel here. A
+  // logged-out visitor is sent to auth first (mirroring submitReviewedHatch's
+  // pending-action pattern) instead of hitting a doomed 401.
+  function messageHatcher(operatorId) {
+    if (!isLoggedIn() || !backendToken()) {
+      localStorage.setItem("hatchPendingMessageTo", operatorId);
+      setRoute("auth");
+      return;
+    }
+    openNewMessage(operatorId, "", "");
   }
 
   async function saveMission(taskId, status) {
@@ -5115,6 +5187,8 @@ window.SkillNestApp = (() => {
         ? Pages.aboutPage()
       : route === "browse"
         ? Pages.browsePage(browsableTasks())
+      : route === "hatchers"
+        ? Pages.findHatchersPage()
       : route === "verified-work"
         ? Pages.verifiedWorkPage()
       : route === "messages"
@@ -5183,6 +5257,7 @@ window.SkillNestApp = (() => {
       // Filters first, so hydration knows which cards are actually on screen
       // and skips paying to translate ones the reader filtered away.
       if (route === "browse") applyTaskFilters();
+      if (route === "hatchers") applyHatcherFilters();
       hydrateTaskTranslations();
       if (route === "messages") {
         const thread = document.getElementById("threadBody");
@@ -5198,8 +5273,11 @@ window.SkillNestApp = (() => {
   return {
     applyDarkModePreference,
     applyTaskFilters,
+    applyHatcherFilters,
     handleRangeInput,
     resetTaskFilters,
+    resetHatcherFilters,
+    messageHatcher,
     answerClarification,
     clearTaskDraft,
     closeModal,

@@ -23,6 +23,8 @@ window.HatchI18n = (() => {
     // ── Navigation, footer, account ──────────────────────────────────────────
     "Hatches": "Hatch 任务",
     "Browse Hatches": "浏览 Hatch",
+    "Hatchers": "Hatcher",
+    "Find Hatchers": "查找 Hatcher",
     "Verified Results": "已验证成果",
     "Become a Hatcher": "成为 Hatcher",
     "Log in": "登录",
@@ -332,6 +334,16 @@ window.HatchI18n = (() => {
     "No Hatches match those filters.": "没有符合筛选条件的 Hatch。",
     "Task, business, or industry...": "任务、业务或行业…",
     "Completed Hatches, verified delivery.": "已完成的 Hatch，交付均经验证。",
+
+    // ── Find Hatchers (directory) ────────────────────────────────────────────
+    "Browse verified Hatchers and message the right one directly.": "浏览已验证的 Hatcher，直接联系合适的人选。",
+    "Hatcher filters": "Hatcher 筛选",
+    "Name, industry, or tool...": "姓名、行业或工具…",
+    "Rating: high to low": "评分：由高到低",
+    "Most Hatched": "已孵化最多",
+    "On-time: high to low": "准时率：由高到低",
+    "No Hatchers match those filters.": "没有符合筛选条件的 Hatcher。",
+    "✉️ Message": "✉️ 发消息",
 
     // ── Auth ─────────────────────────────────────────────────────────────────
     "Log in to Hatch.": "登录 Hatch。",

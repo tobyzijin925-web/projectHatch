@@ -1400,6 +1400,7 @@ window.SkillNestComponents = (() => {
             </a>
             <div class="nav-links">
               <a href="#browse" class="${active === "browse" ? "active" : ""}">Hatches</a>
+              <a href="#hatchers" class="${active === "hatchers" ? "active" : ""}">Hatchers</a>
               <a href="#verified-work" class="${active === "verified-work" ? "active" : ""}">Verified Results</a>
               ${hatcherLink}
               <a href="#about" class="secondary-link ${active === "about" ? "active" : ""}">About Hatch</a>
@@ -1747,6 +1748,42 @@ window.SkillNestComponents = (() => {
         </div>
         <div class="tag-row">${operator.industries.map((item) => tag(item)).join("")}</div>
         <p class="tools">Tools: ${operator.tools.join(", ")}</p>
+      </article>
+    `;
+  }
+
+  // "L2 Hatcher" / "L3 Specialist" -> "L2" / "L3", for level-filter checkboxes.
+  function hatcherLevelBucket(level = "") {
+    const match = String(level).match(/L\d/);
+    return match ? match[0] : level;
+  }
+
+  // Directory row: profile image on the left, details on the right — the
+  // Hatcher counterpart to a browse task-card, but laid out two per row
+  // instead of a card grid, since a person reads more naturally as a wide row
+  // than a tall tile. Clicking anywhere opens the full profile; the message
+  // button is a direct line that doesn't require opening it first.
+  function hatcherDirectoryCard(operator) {
+    const searchable = `${operator.name} ${operator.bio} ${operator.industries.join(" ")} ${operator.tools.join(" ")}`;
+    return `
+      <article class="hatcher-row-card" data-hatcher-id="${operator.id}" data-level="${escapeHtml(hatcherLevelBucket(operator.level))}" data-level-num="${levelSortValue(operator.level)}" data-rating="${parseFloat(operator.rating) || 0}" data-completed="${Number(operator.completed) || 0}" data-ontime="${parseFloat(operator.onTime) || 0}" data-industry="${escapeHtml(operator.industries[0] || "")}" data-industry-list="${escapeHtml(operator.industries.join("|"))}" data-search="${escapeHtml(searchable)}" onclick="SkillNestApp.openOperatorProfile('${operator.id}')">
+        <div class="hatcher-row-avatar">${userAvatar(operator, "avatar-xl")}</div>
+        <div class="hatcher-row-body">
+          <div class="hatcher-row-head">
+            <div>
+              <h3>${escapeHtml(operator.name)}</h3>
+              <p class="hatcher-row-level">${escapeHtml(operator.level)}</p>
+            </div>
+            <button class="btn secondary small hatcher-message-btn" type="button" onclick="event.stopPropagation(); SkillNestApp.messageHatcher('${operator.id}')">✉️ Message</button>
+          </div>
+          <p class="hatcher-row-bio">${escapeHtml(operator.bio)}</p>
+          <div class="metric-grid compact-metric-grid">
+            <div><strong>${operator.completed}</strong><span>hatched</span></div>
+            <div><strong>${operator.rating}</strong><span>rating</span></div>
+            <div><strong>${operator.onTime}</strong><span>on-time</span></div>
+          </div>
+          <div class="tag-row">${operator.industries.map((item) => tag(item)).join("")}</div>
+        </div>
       </article>
     `;
   }
@@ -2183,6 +2220,9 @@ window.SkillNestComponents = (() => {
         <div><strong>${operator.onTime}</strong><span>on-time</span></div>
       </div>
       <div class="tag-row">${operator.industries.map((item) => tag(item)).join("")}</div>
+      <div class="task-actions modal-actions">
+        <button class="btn primary full" type="button" onclick="SkillNestApp.messageHatcher('${operator.id}')">✉️ Message <span data-no-i18n>${escapeHtml(operator.name)}</span></button>
+      </div>
       <div class="operator-tabs">
         <button class="tab active" type="button" onclick="SkillNestApp.showOperatorTab(event, 'offers')">Offers</button>
         <button class="tab" type="button" onclick="SkillNestApp.showOperatorTab(event, 'industries')">Industries</button>
@@ -2370,6 +2410,7 @@ window.SkillNestComponents = (() => {
             </button>
             <a href="#create-hatch" onclick="SkillNestApp.startNewHatch()">Post a Hatch</a>
             <a href="#browse">Browse Hatches</a>
+            <a href="#hatchers">Find Hatchers</a>
             <a href="#verified-work">Verified Results</a>
             ${hatcherLink}
             <a href="#about">About Hatch</a>
@@ -2417,6 +2458,8 @@ window.SkillNestComponents = (() => {
     modal,
     nav,
     nextClarification,
+    hatcherDirectoryCard,
+    hatcherLevelBucket,
     operatorCard,
     operatorDetail,
     recommendedOperators,
@@ -2426,6 +2469,7 @@ window.SkillNestComponents = (() => {
     tag,
     budgetSortValue,
     completionSortValue,
+    levelSortValue,
     formatRangeValue,
     rangeFilterMarkup,
     taskCard,

@@ -1826,6 +1826,71 @@ button.chip:hover {
   grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
 }
 
+/* Hatcher directory: two wide rows per line, photo on the left of each row,
+   details on the right — a person reads better as a row than a tall tile. */
+.hatcher-directory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.hatcher-row-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 18px;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.hatcher-row-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 22px 54px rgba(16, 24, 40, 0.11);
+}
+
+.hatcher-row-avatar {
+  flex-shrink: 0;
+}
+
+.hatcher-row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.hatcher-row-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.hatcher-row-level {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.hatcher-row-bio {
+  margin: 8px 0 0;
+  color: var(--text-soft);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.hatcher-message-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.compact-metric-grid {
+  margin: 14px 0 10px;
+}
+
+.compact-metric-grid div {
+  padding: 8px 10px;
+}
+
 .task-feedback,
 .empty-state {
   display: none;
@@ -5083,13 +5148,25 @@ html.dark-mode .btn.secondary:hover {
   .brief-card-grid,
   .brief-editor-row,
   .brief-meta-grid,
-  .detail-grid {
+  .detail-grid,
+  .hatcher-directory-grid {
     grid-template-columns: 1fr;
   }
 
   .verified-metrics,
   .proof-grid {
     grid-template-columns: 1fr;
+  }
+
+  .hatcher-row-card {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .hatcher-row-head {
+    flex-direction: column;
+    align-items: center;
   }
 
   .hero-actions {
