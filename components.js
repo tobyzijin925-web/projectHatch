@@ -1811,6 +1811,61 @@ window.SkillNestComponents = (() => {
     `;
   }
 
+  // Quality + responsiveness + recency, blended into one 0-100 ranking score.
+  // Rating and on-time delivery carry the most weight since they're the
+  // clearest signal of good work; completed count uses a log curve so a
+  // veteran with 50 jobs can't automatically outrank someone with 20 great
+  // ones. Response time and days-since-active reward Hatchers who are
+  // actually around and quick to reply right now, not just historically good.
+  // An optional context (industry/tools the browsing client cares about)
+  // adds a match boost on top of that baseline quality score.
+  const HATCHER_SCORE_WEIGHTS = {
+    rating: 0.30,
+    onTime: 0.20,
+    completed: 0.15,
+    responseTime: 0.15,
+    repeatClients: 0.10,
+    recency: 0.10,
+  };
+
+  function clamp01(value) {
+    return Math.max(0, Math.min(1, value));
+  }
+
+  function daysSince(dateStr) {
+    const then = new Date(dateStr).getTime();
+    return Number.isNaN(then) ? null : Math.max(0, (Date.now() - then) / 86400000);
+  }
+
+  function hatcherMatchScore(operator, context = {}) {
+    const rating = clamp01((parseFloat(operator.rating) - 4) / 1);
+    const onTime = clamp01((parseFloat(operator.onTime) - 70) / 30);
+    const completed = clamp01(Math.log2((Number(operator.completed) || 0) + 1) / Math.log2(51));
+    const responseTime = Number.isFinite(operator.avgResponseMinutes)
+      ? clamp01(1 - (operator.avgResponseMinutes - 5) / 175)
+      : 0.5; // unknown response time: neither rewarded nor penalized
+    const repeatClients = clamp01((Number(operator.repeatClientRate) || 0) / 100);
+    const activeDaysAgo = daysSince(operator.lastActiveAt);
+    const recency = activeDaysAgo === null ? 0.5 : clamp01(1 - activeDaysAgo / 30);
+
+    const baseScore = 100 * (
+      HATCHER_SCORE_WEIGHTS.rating * rating +
+      HATCHER_SCORE_WEIGHTS.onTime * onTime +
+      HATCHER_SCORE_WEIGHTS.completed * completed +
+      HATCHER_SCORE_WEIGHTS.responseTime * responseTime +
+      HATCHER_SCORE_WEIGHTS.repeatClients * repeatClients +
+      HATCHER_SCORE_WEIGHTS.recency * recency
+    );
+
+    const industryMatch = context.industry && (operator.industries || []).includes(context.industry) ? 15 : 0;
+    const toolOverlap = context.tools?.length
+      ? (operator.tools || []).filter((tool) => context.tools.includes(tool)).length
+      : 0;
+    const toolMatch = Math.min(10, toolOverlap * 4);
+
+    return Math.round(clamp01((baseScore + industryMatch + toolMatch) / 100) * 100);
+  }
+
   // "L2 Hatcher" / "L3 Specialist" -> "L2" / "L3", for level-filter checkboxes.
   function hatcherLevelBucket(level = "") {
     const match = String(level).match(/L\d/);
@@ -1822,10 +1877,10 @@ window.SkillNestComponents = (() => {
   // instead of a card grid, since a person reads more naturally as a wide row
   // than a tall tile. Clicking anywhere opens the full profile; the message
   // button is a direct line that doesn't require opening it first.
-  function hatcherDirectoryCard(operator) {
+  function hatcherDirectoryCard(operator, context = {}) {
     const searchable = `${operator.name} ${operator.bio} ${operator.industries.join(" ")} ${operator.tools.join(" ")}`;
     return `
-      <article class="hatcher-row-card" data-hatcher-id="${operator.id}" data-level="${escapeHtml(hatcherLevelBucket(operator.level))}" data-level-num="${levelSortValue(operator.level)}" data-rating="${parseFloat(operator.rating) || 0}" data-completed="${Number(operator.completed) || 0}" data-ontime="${parseFloat(operator.onTime) || 0}" data-industry="${escapeHtml(operator.industries[0] || "")}" data-industry-list="${escapeHtml(operator.industries.join("|"))}" data-search="${escapeHtml(searchable)}" onclick="SkillNestApp.openOperatorProfile('${operator.id}')">
+      <article class="hatcher-row-card" data-hatcher-id="${operator.id}" data-level="${escapeHtml(hatcherLevelBucket(operator.level))}" data-level-num="${levelSortValue(operator.level)}" data-rating="${parseFloat(operator.rating) || 0}" data-completed="${Number(operator.completed) || 0}" data-ontime="${parseFloat(operator.onTime) || 0}" data-score="${hatcherMatchScore(operator, context)}" data-industry="${escapeHtml(operator.industries[0] || "")}" data-industry-list="${escapeHtml(operator.industries.join("|"))}" data-search="${escapeHtml(searchable)}" onclick="SkillNestApp.openOperatorProfile('${operator.id}')">
         <div class="hatcher-row-avatar">${userAvatar(operator, "avatar-xl")}</div>
         <div class="hatcher-row-body">
           <div class="hatcher-row-head">
@@ -1847,16 +1902,17 @@ window.SkillNestComponents = (() => {
     `;
   }
 
-  function recommendedOperators(industry = "") {
+  function recommendedOperators(industry = "", tools = []) {
+    const context = { industry, tools };
     const recommended = [...operators]
-      .sort((a, b) => Number(b.industries.includes(industry)) - Number(a.industries.includes(industry)))
+      .sort((a, b) => hatcherMatchScore(b, context) - hatcherMatchScore(a, context))
       .slice(0, 3);
 
     return `
       <div class="recommendations">
         <div class="card-title-row">
           <h2>Recommended Hatchers</h2>
-          <span class="tag">Mock matches</span>
+          <span class="tag">${industry ? `Matched to ${escapeHtml(industry)}` : "Top rated"}</span>
         </div>
         <div class="operator-grid">${recommended.map((operator) => operatorCard(operator, true)).join("")}</div>
       </div>
@@ -2520,6 +2576,7 @@ window.SkillNestComponents = (() => {
     nextClarification,
     hatcherDirectoryCard,
     hatcherLevelBucket,
+    hatcherMatchScore,
     operatorCard,
     operatorDetail,
     recommendedOperators,

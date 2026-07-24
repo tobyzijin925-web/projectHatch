@@ -236,7 +236,7 @@ window.SkillNestPages = (() => {
   // browsePage, but the grid lays each Hatcher out as a wide row (photo left,
   // details right) two per row, rather than a task-style tile grid — a person
   // reads better as a row than a card.
-  function findHatchersPage(allOperators = operators) {
+  function findHatchersPage(allOperators = operators, context = {}) {
     const uniqueLevels = [...new Set(allOperators.map((op) => C.hatcherLevelBucket(op.level)).filter(Boolean))]
       .sort((a, b) => C.levelSortValue(a) - C.levelSortValue(b));
     const industries = [...new Set(allOperators.flatMap((op) => op.industries || []))];
@@ -251,6 +251,7 @@ window.SkillNestPages = (() => {
               <p class="section-kicker">Browse verified Hatchers and message the right one directly.</p>
             </div>
           </div>
+          ${C.recommendedOperators(context.industry || "", context.tools || [])}
           <div class="browse-layout">
             <aside class="browse-sidebar" aria-label="Hatcher filters">
               <div class="filter-group">
@@ -283,7 +284,7 @@ window.SkillNestPages = (() => {
                 <label class="sort-control">
                   <span>Sort by</span>
                   <select id="hatcherSortFilter" onchange="SkillNestApp.applyHatcherFilters()">
-                    <option value="">Featured</option>
+                    <option value="">Recommended</option>
                     <option value="rating">Rating: high to low</option>
                     <option value="completed">Most Hatched</option>
                     <option value="ontime">On-time: high to low</option>
@@ -292,7 +293,7 @@ window.SkillNestPages = (() => {
                 </label>
               </div>
               <div class="hatcher-directory-grid" id="hatcherDirectoryGrid">
-                ${allOperators.map((operator) => C.hatcherDirectoryCard(operator)).join("")}
+                ${allOperators.map((operator) => C.hatcherDirectoryCard(operator, context)).join("")}
               </div>
               <div class="empty-state" id="emptyHatchers">No Hatchers match those filters.</div>
             </div>

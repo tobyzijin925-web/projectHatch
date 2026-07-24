@@ -454,6 +454,18 @@ window.SkillNestApp = (() => {
     return brief;
   }
 
+  // What to personalize the Hatcher recommendations around: the industry of
+  // whatever project the visitor is currently working on, falling back to
+  // their most recently posted Hatch. Empty when neither exists — the
+  // recommendation algorithm still ranks by quality, just without a match boost.
+  function hatcherRecommendationContext() {
+    const brief = getGeneratedBrief();
+    if (brief?.industry && brief.industry !== "General business") return { industry: brief.industry };
+    const [latestPosted] = getPostedTasks();
+    if (latestPosted?.industry) return { industry: latestPosted.industry };
+    return {};
+  }
+
   function getAssistantMessages() {
     return readJson("hatchAssistantMessages", []);
   }
@@ -3986,14 +3998,16 @@ window.SkillNestApp = (() => {
       if (card.dataset.order === undefined) card.dataset.order = String(index);
     });
 
-    // Rating/completed/on-time sort high-to-low (best first); level sorts
-    // low-to-high (L1 before L3), matching the Hatch level sort.
-    const sortKey = { rating: "rating", completed: "completed", ontime: "ontime", level: "levelNum" }[sort];
-    const descending = sort === "rating" || sort === "completed" || sort === "ontime";
-    const sortValue = (card) => (sortKey ? Number(card.dataset[sortKey]) : Number(card.dataset.order));
+    // Rating/completed/on-time/recommended sort high-to-low (best first);
+    // level sorts low-to-high (L1 before L3), matching the Hatch level sort.
+    // "Recommended" (the default, empty sort value) ranks by the blended
+    // match score stamped on each card by hatcherMatchScore().
+    const sortKey = { rating: "rating", completed: "completed", ontime: "ontime", level: "levelNum" }[sort] || "score";
+    const descending = sort !== "level";
+    const sortValue = (card) => Number(card.dataset[sortKey]);
     const ordered = [...cards].sort((a, b) => {
       const diff = descending ? sortValue(b) - sortValue(a) : sortValue(a) - sortValue(b);
-      return (sortKey ? diff : 0) || Number(a.dataset.order) - Number(b.dataset.order);
+      return diff || Number(a.dataset.order) - Number(b.dataset.order);
     });
     ordered.forEach((card) => grid.appendChild(card));
 
@@ -5208,7 +5222,7 @@ window.SkillNestApp = (() => {
       : route === "browse"
         ? Pages.browsePage(browsableTasks())
       : route === "hatchers"
-        ? Pages.findHatchersPage()
+        ? Pages.findHatchersPage(operators, hatcherRecommendationContext())
       : route === "verified-work"
         ? Pages.verifiedWorkPage()
       : route === "messages"
