@@ -1398,7 +1398,7 @@ window.SkillNestComponents = (() => {
   // previewMode reframes the same numbers as a forward-looking dashboard
   // preview (see the admin control that sets them).
   function statsBanner(stats = {}) {
-    const nf = (value) => Number(value || 0).toLocaleString();
+    const nf = (value) => `${Number(value || 0).toLocaleString()}+`;
     const preview = Boolean(stats.previewMode);
     const lead = preview
       ? `📊 <strong>A preview of what our live dashboard will show as we grow</strong>`
