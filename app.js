@@ -85,6 +85,45 @@ window.SkillNestApp = (() => {
     render();
   }
 
+  // First-visit language gate. Separate from HatchI18n's own "hatchLang"
+  // storage key: setLang() only writes that key when the choice differs from
+  // the current in-memory default, so picking English (already the default)
+  // would never persist and the gate would reappear every visit. This flag
+  // records that the visitor was asked at all, regardless of what — or
+  // whether — they picked.
+  const LANGUAGE_GATE_SEEN_KEY = "hatchLangGateSeen";
+
+  function markLanguageGateSeen() {
+    try {
+      localStorage.setItem(LANGUAGE_GATE_SEEN_KEY, "true");
+    } catch {
+      /* private browsing — gate may reappear next visit */
+    }
+  }
+
+  function showLanguageGate() {
+    let seen;
+    try {
+      seen = localStorage.getItem(LANGUAGE_GATE_SEEN_KEY) === "true";
+    } catch {
+      seen = false;
+    }
+    if (seen) return;
+    openModal(C.languageGateModal());
+  }
+
+  function chooseInitialLanguage(code) {
+    markLanguageGateSeen();
+    window.HatchI18n?.setLang(code);
+    closeModal();
+    render();
+  }
+
+  function dismissLanguageGate() {
+    markLanguageGateSeen();
+    closeModal();
+  }
+
   // Content-language preferences live in one place (HatchI18n) and are mirrored
   // onto the account so they survive a backend account refresh. The browse
   // sidebar and the settings page both drive these same two setters, which is
@@ -5377,6 +5416,9 @@ window.SkillNestApp = (() => {
     toggleLanguageMenu,
     toggleBrowseMenu,
     chooseLanguage,
+    chooseInitialLanguage,
+    dismissLanguageGate,
+    showLanguageGate,
     setContentLanguage,
     setForeignHatchHandling,
     toggleTaskOriginal,
@@ -5421,6 +5463,7 @@ window.SkillNestApp = (() => {
 SkillNestApp.applyDarkModePreference();
 SkillNestApp.syncContentPrefsFromAccount();
 SkillNestApp.render();
+SkillNestApp.showLanguageGate();
 // Pick up server-side account changes (role upgrades, admin flag) at boot.
 window.setTimeout(() => SkillNestApp.refreshBackendAccount(), 300);
 window.testDeepSeekConnection = SkillNestApp.testDeepSeekConnection;

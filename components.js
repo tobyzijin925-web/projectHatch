@@ -2056,6 +2056,28 @@ window.SkillNestComponents = (() => {
     `;
   }
 
+  // First-visit language gate. Shown before any language has been chosen, so
+  // both the prompt and the dismiss affordance are bilingual — a Chinese
+  // speaker shouldn't need English literacy to pick 中文. Dismissing without
+  // choosing (backdrop click) is treated as "stay on the default", same as
+  // picking English, so the gate never nags on a later visit.
+  function languageGateModal() {
+    const languages = window.HatchI18n?.languages() || [];
+    return `
+      <div class="modal-backdrop" onclick="SkillNestApp.dismissLanguageGate()">
+        <section class="modal-panel narrow language-gate" role="dialog" aria-modal="true" aria-label="Choose your language / 选择语言" onclick="event.stopPropagation()">
+          <h2>Choose your language<br>选择语言</h2>
+          <p>You can change this anytime in settings.<br>之后可以随时在设置中更改。</p>
+          <div class="language-gate-options">
+            ${languages.map((lang) => `
+              <button class="language-gate-option" type="button" onclick="SkillNestApp.chooseInitialLanguage('${lang.code}')">${escapeHtml(lang.native)}</button>
+            `).join("")}
+          </div>
+        </section>
+      </div>
+    `;
+  }
+
   function scopeForTask(task, category) {
     const title = `${task.title || ""} ${task.description || ""}`.toLowerCase();
     if (category === "Website" || title.includes("website")) {
@@ -2550,6 +2572,7 @@ window.SkillNestComponents = (() => {
     footer,
     formatMessageTime,
     languageBadge,
+    languageGateModal,
     languagePicker,
     taskLanguageState,
     messageBubble,

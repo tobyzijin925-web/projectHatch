@@ -4431,6 +4431,48 @@ dd {
   cursor: pointer;
 }
 
+.modal-panel.narrow {
+  width: min(420px, 100%);
+  max-height: none;
+  text-align: center;
+}
+
+.language-gate h2 {
+  margin: 4px 0 12px;
+  font-size: 1.3rem;
+  line-height: 1.4;
+}
+
+.language-gate p {
+  margin: 0 0 20px;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.language-gate-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.language-gate-option {
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.language-gate-option:hover {
+  background: var(--neutral-pill-bg);
+  border-color: var(--accent-dark);
+}
+
 .detail-head,
 .detail-operator-head {
   display: flex;
