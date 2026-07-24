@@ -1,5 +1,5 @@
 window.SkillNestPages = (() => {
-  const { tasks, operators, levels, completedHatches } = window.SkillNestData;
+  const { tasks, operators, clients, levels, completedHatches } = window.SkillNestData;
   const C = window.SkillNestComponents;
 
   function socialAuthButtons() {
@@ -296,6 +296,74 @@ window.SkillNestPages = (() => {
                 ${allOperators.map((operator) => C.hatcherDirectoryCard(operator, context)).join("")}
               </div>
               <div class="empty-state" id="emptyHatchers">No Hatchers match those filters.</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    `;
+  }
+
+  // Browse clients: the mirror image of findHatchersPage — same browse-and-
+  // filter layout and the same wide-row directory grid, but listing the
+  // businesses posting Hatches so a Hatcher can find and contact the right one.
+  function findClientsPage(allClients = clients, context = {}) {
+    const types = [...new Set(allClients.map((client) => client.type).filter(Boolean))];
+    const industries = [...new Set(allClients.flatMap((client) => client.industries || []))];
+
+    return `
+      <main>
+        <section class="section page" id="clients">
+          <div class="section-head compact-head">
+            <div>
+              <div class="section-label">Browse Clients</div>
+              <h2>Clients</h2>
+              <p class="section-kicker">Browse the businesses posting Hatches and message the right one directly.</p>
+            </div>
+          </div>
+          ${C.recommendedClients(context.industry || "", context.tools || [])}
+          <div class="browse-layout">
+            <aside class="browse-sidebar" aria-label="Client filters">
+              <div class="filter-group">
+                <label class="filter-heading" for="clientSearch">Search</label>
+                <input id="clientSearch" type="search" placeholder="Name, industry, or tool..." oninput="SkillNestApp.applyClientFilters()" />
+              </div>
+              <div class="filter-group">
+                <div class="filter-heading">Business type</div>
+                <div class="filter-options">
+                  ${types.map((type) => `
+                    <label class="filter-check">
+                      <input type="checkbox" class="client-type-check" value="${C.escapeHtml(type)}" onchange="SkillNestApp.applyClientFilters()" />
+                      <span>${C.escapeHtml(type)}</span>
+                    </label>
+                  `).join("")}
+                </div>
+              </div>
+              <div class="filter-group">
+                <label class="filter-heading" for="clientIndustryFilter">Industry</label>
+                <select id="clientIndustryFilter" onchange="SkillNestApp.applyClientFilters()">
+                  <option value="">All industries</option>
+                  ${industries.map((industry) => `<option value="${C.escapeHtml(industry)}">${industry}</option>`).join("")}
+                </select>
+              </div>
+              <button class="btn ghost small filter-reset" type="button" onclick="SkillNestApp.resetClientFilters()">Clear filters</button>
+            </aside>
+            <div class="browse-main">
+              <div class="browse-toolbar">
+                <span class="result-hint" id="clientResultHint"></span>
+                <label class="sort-control">
+                  <span>Sort by</span>
+                  <select id="clientSortFilter" onchange="SkillNestApp.applyClientFilters()">
+                    <option value="">Recommended</option>
+                    <option value="rating">Rating: high to low</option>
+                    <option value="posted">Most posted</option>
+                    <option value="hire">Hire rate: high to low</option>
+                  </select>
+                </label>
+              </div>
+              <div class="hatcher-directory-grid" id="clientDirectoryGrid">
+                ${allClients.map((client) => C.clientDirectoryCard(client, context)).join("")}
+              </div>
+              <div class="empty-state" id="emptyClients">No clients match those filters.</div>
             </div>
           </div>
         </section>
@@ -734,12 +802,57 @@ window.SkillNestPages = (() => {
     `;
   }
 
+  // Admin control for the rolling stats banner: one number per figure the
+  // banner cites, plus the growth-preview switch. Values come from the same
+  // cache the banner renders from, so the inputs always show what's live. The
+  // banner itself isn't shown on this (profile) page, so a live inline preview
+  // updates as any field or the switch changes — that's what makes flipping
+  // the switch visibly do something here. Save persists it to every visitor.
+  function statsBannerAdminCard() {
+    const stats = window.SkillNestApp?.getSiteStats?.() || {};
+    const numberField = (id, label, value) => `
+      <label class="stats-admin-field">
+        <span>${label}</span>
+        <input id="${id}" type="number" min="0" step="1" inputmode="numeric" value="${Number(value || 0)}" oninput="SkillNestApp.previewSiteStatsBanner()" />
+      </label>
+    `;
+    return `
+      <section class="profile-card wide admin-panel">
+        <div class="card-title-row"><h2>Admin &middot; Stats banner</h2></div>
+        <p class="muted-text">These numbers power the rolling banner under the top bar. They're shown to every visitor on the marketing, browse, and sign-up pages.</p>
+        <form class="stats-admin-form" onsubmit="SkillNestApp.saveSiteStats(event)">
+          <div class="stats-admin-grid">
+            ${numberField("statActiveHatchers", "Active Hatchers", stats.activeHatchers)}
+            ${numberField("statOpenHatches", "Open Hatches", stats.openHatches)}
+            ${numberField("statActiveClients", "Active clients", stats.activeClients)}
+            ${numberField("statHatchesLastWeek", "Hatches done last week", stats.hatchesLastWeek)}
+            ${numberField("statPeople", "People (community total)", stats.people)}
+          </div>
+          <label class="stats-admin-switch">
+            <input id="statPreviewMode" type="checkbox" ${stats.previewMode ? "checked" : ""} onchange="SkillNestApp.previewSiteStatsBanner()" />
+            <span class="stats-admin-switch-track" aria-hidden="true"></span>
+            <span class="stats-admin-switch-label">Show as a preview of what the live dashboard will show as we grow</span>
+          </label>
+          <div class="stats-admin-preview-wrap">
+            <span class="filter-heading">Live preview</span>
+            <div class="stats-admin-preview" id="statsBannerPreview">${C.statsBanner(stats)}</div>
+          </div>
+          <div class="stats-admin-actions">
+            <button class="btn secondary small" type="submit">Save banner</button>
+            <span class="muted-text" id="statsSaveStatus" aria-live="polite"></span>
+          </div>
+        </form>
+      </section>
+    `;
+  }
+
   function adminPanel(adminData, adminHatches) {
     const applications = adminData.applications || [];
     const pending = applications.filter((application) => application.status === "pending");
     const reviewed = applications.length - pending.length;
     const sourceLabel = { posted: "posted here", seed: "demo listing", backend: "backend" };
     return `
+      ${statsBannerAdminCard()}
       <section class="profile-card wide admin-panel">
         <div class="card-title-row"><h2>Admin &middot; Hatcher applications</h2></div>
         ${pending.length ? `
@@ -1146,6 +1259,7 @@ window.SkillNestPages = (() => {
     authPage,
     browsePage,
     findHatchersPage,
+    findClientsPage,
     homePage,
     howItWorksPage,
     messagesPage,

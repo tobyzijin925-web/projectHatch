@@ -129,6 +129,194 @@ a {
   margin: 0 auto;
 }
 
+/* ── Rolling stats banner ─────────────────────────────────────────────────
+   A thin green strip under the top bar. The track holds two identical groups;
+   the marquee animation slides it left by exactly half its width so the second
+   group seamlessly replaces the first, then loops. */
+.stats-banner {
+  /* Not sticky: the topbar above it is sticky (top:0), so pinning this too
+     would overlap it. The banner sits under the top row and scrolls away. */
+  position: relative;
+  z-index: 18;
+  overflow: hidden;
+  background: linear-gradient(90deg, var(--accent-dark), var(--accent));
+  color: #fff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.stats-banner.preview {
+  background: linear-gradient(90deg, #0b7d51, #12a06c);
+}
+
+.stats-banner-track {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  will-change: transform;
+  animation: stats-marquee 42s linear infinite;
+}
+
+.stats-banner:hover .stats-banner-track {
+  animation-play-state: paused;
+}
+
+.stats-banner-group {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.stats-banner-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 22px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.stats-banner-item strong {
+  font-weight: 850;
+}
+
+.stats-banner-dot {
+  opacity: 0.55;
+  font-size: 0.7rem;
+}
+
+@keyframes stats-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stats-banner-track {
+    animation: none;
+    transform: none;
+  }
+  /* No motion: let the row scroll horizontally instead of clipping. */
+  .stats-banner {
+    overflow-x: auto;
+  }
+  .stats-banner-group[aria-hidden="true"] {
+    display: none;
+  }
+}
+
+/* Admin control for the banner numbers + growth-preview switch. */
+.stats-admin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stats-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.stats-admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.stats-admin-field span {
+  color: var(--text-strong);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.stats-admin-field input {
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.stats-admin-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.stats-admin-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.stats-admin-switch-track {
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--neutral-pill-bg);
+  border: 1px solid var(--line);
+  transition: background 0.16s ease;
+}
+
+.stats-admin-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.28);
+  transition: transform 0.16s ease;
+}
+
+.stats-admin-switch input:checked + .stats-admin-switch-track {
+  background: var(--accent);
+  border-color: var(--accent-dark);
+}
+
+.stats-admin-switch input:checked + .stats-admin-switch-track::after {
+  transform: translateX(18px);
+}
+
+.stats-admin-switch input:focus-visible + .stats-admin-switch-track {
+  box-shadow: 0 0 0 3px rgba(var(--tint-rgb), 0.18);
+}
+
+.stats-admin-switch-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.stats-admin-preview-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stats-admin-preview {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.stats-admin-preview .stats-banner {
+  border-bottom: 0;
+}
+
+.stats-admin-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .brand {
   display: inline-flex;
   align-items: center;

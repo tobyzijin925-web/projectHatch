@@ -1,5 +1,5 @@
 window.SkillNestApp = (() => {
-  const { tasks, operators, completedHatches, hatcherProfiles } = window.SkillNestData;
+  const { tasks, operators, clients, completedHatches, hatcherProfiles } = window.SkillNestData;
   const C = window.SkillNestComponents;
   const Pages = window.SkillNestPages;
   let voiceRecognition = null;
@@ -4089,6 +4089,81 @@ window.SkillNestApp = (() => {
     openNewMessage(operatorId, "", "");
   }
 
+  // ── Clients directory ────────────────────────────────────────────────────
+  // Mirror of the Hatcher directory helpers above, keyed off the client-*
+  // element ids/classes rendered by findClientsPage. The card visual classes
+  // are shared with the Hatcher grid (hatcher-row-card), so only the interactive
+  // hooks differ.
+  function applyClientFilters() {
+    const query = (document.getElementById("clientSearch")?.value || "").toLowerCase();
+    const types = [...document.querySelectorAll(".client-type-check:checked")].map((el) => el.value);
+    const industry = document.getElementById("clientIndustryFilter")?.value || "";
+    const sort = document.getElementById("clientSortFilter")?.value || "";
+    const grid = document.getElementById("clientDirectoryGrid");
+    if (!grid) return;
+    const cards = [...grid.querySelectorAll(".hatcher-row-card")];
+
+    cards.forEach((card, index) => {
+      if (card.dataset.order === undefined) card.dataset.order = String(index);
+    });
+
+    // All client sorts run high-to-low (best first); "Recommended" (the empty
+    // default) ranks by the blended match score stamped on each card.
+    const sortKey = { rating: "rating", posted: "posted", hire: "hire" }[sort] || "score";
+    const sortValue = (card) => Number(card.dataset[sortKey]);
+    const ordered = [...cards].sort((a, b) => {
+      const diff = sortValue(b) - sortValue(a);
+      return diff || Number(a.dataset.order) - Number(b.dataset.order);
+    });
+    ordered.forEach((card) => grid.appendChild(card));
+
+    let visibleCount = 0;
+    cards.forEach((card) => {
+      const isVisible =
+        (!query || card.dataset.search.toLowerCase().includes(query)) &&
+        (!types.length || types.includes(card.dataset.type)) &&
+        (!industry || card.dataset.industryList.split("|").includes(industry));
+      card.hidden = !isVisible;
+      if (isVisible) visibleCount += 1;
+    });
+
+    document.getElementById("emptyClients")?.classList.toggle("show", visibleCount === 0);
+    const hint = document.getElementById("clientResultHint");
+    if (hint) hint.textContent = `${visibleCount} ${visibleCount === 1 ? "client" : "clients"}`;
+  }
+
+  function resetClientFilters() {
+    const search = document.getElementById("clientSearch");
+    if (search) search.value = "";
+    const industry = document.getElementById("clientIndustryFilter");
+    if (industry) industry.value = "";
+    const sort = document.getElementById("clientSortFilter");
+    if (sort) sort.value = "";
+    document.querySelectorAll(".client-type-check:checked").forEach((el) => { el.checked = false; });
+    applyClientFilters();
+  }
+
+  function messageClient(clientId) {
+    if (!isLoggedIn() || !backendToken()) {
+      localStorage.setItem("hatchPendingMessageTo", clientId);
+      setRoute("auth");
+      return;
+    }
+    openNewMessage(clientId, "", "");
+  }
+
+  function openClientProfile(clientId) {
+    const client = clients.find((item) => item.id === clientId);
+    if (client) openModal(C.clientDetail(client));
+  }
+
+  // No task context to match against when a Hatcher browses clients (that
+  // matching runs the other direction), so the recommended row just falls
+  // back to top-rated. Kept as a seam mirroring hatcherRecommendationContext.
+  function clientRecommendationContext() {
+    return {};
+  }
+
   async function saveMission(taskId, status) {
     if (!isLoggedIn()) {
       localStorage.setItem("hatchPendingMission", JSON.stringify({ taskId, status }));
@@ -5026,6 +5101,102 @@ window.SkillNestApp = (() => {
     return readJson("hatchAdminCache", { applications: [], hatches: [] });
   }
 
+  // ── Site stats banner ──────────────────────────────────────────────────
+  // Admin-set numbers behind the rolling banner. The backend is the source of
+  // truth (so every visitor sees the same figures), but a localStorage cache
+  // lets the banner render instantly and survive the backend being offline.
+  // Defaults mirror defaultSiteStats() in hatchApi.js.
+  const SITE_STATS_DEFAULTS = {
+    people: 200,
+    openHatches: 45,
+    activeHatchers: 120,
+    activeClients: 80,
+    hatchesLastWeek: 60,
+    previewMode: true,
+  };
+
+  function getSiteStats() {
+    return { ...SITE_STATS_DEFAULTS, ...readJson("hatchSiteStats", {}) };
+  }
+
+  // The banner is a marketing/top-of-funnel element, so it shows only on the
+  // public marketing pages, the browse directories, and the auth screens —
+  // never on the logged-in workspace (messages, settings, profile) or inside
+  // the post-a-Hatch flow.
+  const BANNER_ROUTES = new Set([
+    "home", "how-it-works", "about", "verified-work", "operator",
+    "browse", "hatchers", "clients",
+    "auth", "signup",
+  ]);
+
+  function bannerMarkupFor(route) {
+    return BANNER_ROUTES.has(route) ? C.statsBanner(getSiteStats()) : "";
+  }
+
+  // Swaps just the banner element for a fresh one. Used instead of a full
+  // render() so a background stats refresh (or the admin's own save) never
+  // wipes the page the admin is editing — the form, its focus, and its "Saved"
+  // message all survive.
+  function updateBannerInPlace() {
+    const existing = document.querySelector(".stats-banner");
+    if (!existing) return;
+    const holder = document.createElement("div");
+    holder.innerHTML = C.statsBanner(getSiteStats());
+    const fresh = holder.firstElementChild;
+    if (fresh) existing.replaceWith(fresh);
+  }
+
+  async function refreshSiteStats() {
+    const data = await backendFetch("/api/site-stats");
+    if (!data?.ok || !data.stats) return;
+    const next = JSON.stringify(data.stats);
+    if (next !== localStorage.getItem("hatchSiteStats")) {
+      localStorage.setItem("hatchSiteStats", next);
+      updateBannerInPlace();
+    }
+  }
+
+  // Reads the admin form into a stats object. Used both for the live inline
+  // preview and for the actual save.
+  function statsFromForm() {
+    const num = (id) => Number(document.getElementById(id)?.value || 0);
+    return {
+      people: num("statPeople"),
+      openHatches: num("statOpenHatches"),
+      activeHatchers: num("statActiveHatchers"),
+      activeClients: num("statActiveClients"),
+      hatchesLastWeek: num("statHatchesLastWeek"),
+      previewMode: Boolean(document.getElementById("statPreviewMode")?.checked),
+    };
+  }
+
+  // Live-updates the inline preview inside the admin card as the numbers or the
+  // switch change, so the switch has an immediate, visible effect even though
+  // the real banner doesn't render on this page.
+  function previewSiteStatsBanner() {
+    const container = document.getElementById("statsBannerPreview");
+    if (!container) return;
+    const holder = document.createElement("div");
+    holder.innerHTML = C.statsBanner(statsFromForm());
+    const fresh = holder.firstElementChild;
+    if (fresh) container.replaceChildren(fresh);
+  }
+
+  async function saveSiteStats(event) {
+    event.preventDefault();
+    const payload = statsFromForm();
+    const status = document.getElementById("statsSaveStatus");
+    if (status) status.textContent = "Saving…";
+    const result = await backendFetch("/api/site-stats", { method: "POST", body: payload });
+    if (!result?.ok || !result.stats) {
+      if (status) status.textContent = result?.error || "Couldn't save — is the server running and are you signed in as an admin?";
+      return;
+    }
+    localStorage.setItem("hatchSiteStats", JSON.stringify(result.stats));
+    if (status) status.textContent = "Saved. The banner is updated for everyone.";
+    updateBannerInPlace();
+  }
+
   let adminRefreshInFlight = false;
   async function refreshAdminData() {
     if (!getAccount().isAdmin || !backendToken() || adminRefreshInFlight) return;
@@ -5262,6 +5433,8 @@ window.SkillNestApp = (() => {
         ? Pages.browsePage(browsableTasks())
       : route === "hatchers"
         ? Pages.findHatchersPage(operators, hatcherRecommendationContext())
+      : route === "clients"
+        ? Pages.findClientsPage(clients, clientRecommendationContext())
       : route === "verified-work"
         ? Pages.verifiedWorkPage()
       : route === "messages"
@@ -5310,7 +5483,7 @@ window.SkillNestApp = (() => {
       }
       : null;
 
-    document.getElementById("app").innerHTML = `<div class="app-shell">${C.nav(route, isLoggedIn(), account)}<div class="page-enter">${page}</div>${C.footer(isLoggedIn(), account)}</div>`;
+    document.getElementById("app").innerHTML = `<div class="app-shell">${C.nav(route, isLoggedIn(), account)}${bannerMarkupFor(route)}<div class="page-enter">${page}</div>${C.footer(isLoggedIn(), account)}</div>`;
     // Pages render in English; translate the fresh tree in place before paint.
     window.HatchI18n?.apply(document.getElementById("app"));
     if (menuWasOpen) {
@@ -5331,6 +5504,7 @@ window.SkillNestApp = (() => {
       // and skips paying to translate ones the reader filtered away.
       if (route === "browse") applyTaskFilters();
       if (route === "hatchers") applyHatcherFilters();
+      if (route === "clients") applyClientFilters();
       hydrateTaskTranslations();
       if (route === "messages") {
         const thread = document.getElementById("threadBody");
@@ -5347,10 +5521,14 @@ window.SkillNestApp = (() => {
     applyDarkModePreference,
     applyTaskFilters,
     applyHatcherFilters,
+    applyClientFilters,
     handleRangeInput,
     resetTaskFilters,
     resetHatcherFilters,
+    resetClientFilters,
     messageHatcher,
+    messageClient,
+    openClientProfile,
     answerClarification,
     clearTaskDraft,
     closeModal,
@@ -5430,6 +5608,10 @@ window.SkillNestApp = (() => {
     adminReviewApplication,
     adminDeleteHatch,
     adminSendMessage,
+    saveSiteStats,
+    refreshSiteStats,
+    getSiteStats,
+    previewSiteStatsBanner,
     saveMission,
     saveHatchDraft,
     setRoute,
@@ -5466,4 +5648,6 @@ SkillNestApp.render();
 SkillNestApp.showLanguageGate();
 // Pick up server-side account changes (role upgrades, admin flag) at boot.
 window.setTimeout(() => SkillNestApp.refreshBackendAccount(), 300);
+// Pull the latest banner stats from the backend (public, no auth needed).
+window.setTimeout(() => SkillNestApp.refreshSiteStats(), 300);
 window.testDeepSeekConnection = SkillNestApp.testDeepSeekConnection;

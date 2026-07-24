@@ -1,5 +1,5 @@
 window.SkillNestComponents = (() => {
-  const { taskChips, operators, hatchedWork, completedHatches, hatcherProfiles } = window.SkillNestData;
+  const { taskChips, operators, clients, hatchedWork, completedHatches, hatcherProfiles } = window.SkillNestData;
 
   // The assistant's display name in the chat UI. Change this one value to
   // rename it everywhere it appears to users. (The matching name inside the AI
@@ -1374,6 +1374,7 @@ window.SkillNestComponents = (() => {
     const options = [
       ["browse", "#browse", "Hatches"],
       ["hatchers", "#hatchers", "Hatchers"],
+      ["clients", "#clients", "Clients"],
     ];
     const isActive = options.some(([key]) => key === active);
     return `
@@ -1386,6 +1387,38 @@ window.SkillNestComponents = (() => {
           ${options.map(([key, href, label]) => `
             <a href="${href}" role="menuitem" class="${active === key ? "active" : ""}">${label}</a>
           `).join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  // Rolling stats strip under the top nav. Two identical groups sit side by
+  // side inside the track; the CSS marquee slides the track left by half its
+  // width and loops, so the second group seamlessly takes over from the first.
+  // previewMode reframes the same numbers as a forward-looking dashboard
+  // preview (see the admin control that sets them).
+  function statsBanner(stats = {}) {
+    const nf = (value) => Number(value || 0).toLocaleString();
+    const preview = Boolean(stats.previewMode);
+    const lead = preview
+      ? `📊 <strong>A preview of what our live dashboard will show as we grow</strong>`
+      : `🟢 <strong>Live on Hatch right now</strong>`;
+    const items = [
+      lead,
+      `🐣 <strong>${nf(stats.activeHatchers)}</strong> active Hatchers`,
+      `📋 <strong>${nf(stats.openHatches)}</strong> open Hatches`,
+      `🔍 <strong>${nf(stats.activeClients)}</strong> clients looking for Hatchers`,
+      `✅ <strong>${nf(stats.hatchesLastWeek)}</strong> Hatches completed this week`,
+      `👥 <strong>${nf(stats.people)}</strong> people in the Hatch community`,
+    ];
+    const group = items
+      .map((item) => `<span class="stats-banner-item">${item}</span>`)
+      .join(`<span class="stats-banner-dot" aria-hidden="true">•</span>`);
+    return `
+      <div class="stats-banner ${preview ? "preview" : "live"}" data-no-i18n role="region" aria-label="Hatch community stats">
+        <div class="stats-banner-track">
+          <div class="stats-banner-group">${group}</div>
+          <div class="stats-banner-group" aria-hidden="true">${group}</div>
         </div>
       </div>
     `;
@@ -1917,6 +1950,148 @@ window.SkillNestComponents = (() => {
         <div class="operator-grid">${recommended.map((operator) => operatorCard(operator, true)).join("")}</div>
       </div>
     `;
+  }
+
+  // ── Clients directory ────────────────────────────────────────────────────
+  // The Hatcher-facing counterpart to the pieces above: same match-score /
+  // card / recommended-row shapes as `operators`, reading client-semantic
+  // fields (posted, hireRate, repeatHatcherRate) instead of the Hatcher ones,
+  // and reusing the hatcher-row-* presentation classes so both directories
+  // look identical. Only one of the two routes renders at a time, so sharing
+  // the CSS classes never collides.
+  function clientMatchScore(client, context = {}) {
+    const rating = clamp01((parseFloat(client.rating) - 4) / 1);
+    const hire = clamp01((parseFloat(client.hireRate) - 70) / 30);
+    const posted = clamp01(Math.log2((Number(client.posted) || 0) + 1) / Math.log2(51));
+    const responseTime = Number.isFinite(client.avgResponseMinutes)
+      ? clamp01(1 - (client.avgResponseMinutes - 5) / 175)
+      : 0.5;
+    const repeatHatchers = clamp01((Number(client.repeatHatcherRate) || 0) / 100);
+    const activeDaysAgo = daysSince(client.lastActiveAt);
+    const recency = activeDaysAgo === null ? 0.5 : clamp01(1 - activeDaysAgo / 30);
+
+    const baseScore = 100 * (
+      HATCHER_SCORE_WEIGHTS.rating * rating +
+      HATCHER_SCORE_WEIGHTS.onTime * hire +
+      HATCHER_SCORE_WEIGHTS.completed * posted +
+      HATCHER_SCORE_WEIGHTS.responseTime * responseTime +
+      HATCHER_SCORE_WEIGHTS.repeatClients * repeatHatchers +
+      HATCHER_SCORE_WEIGHTS.recency * recency
+    );
+
+    const industryMatch = context.industry && (client.industries || []).includes(context.industry) ? 15 : 0;
+    const toolOverlap = context.tools?.length
+      ? (client.tools || []).filter((tool) => context.tools.includes(tool)).length
+      : 0;
+    const toolMatch = Math.min(10, toolOverlap * 4);
+
+    return Math.round(clamp01((baseScore + industryMatch + toolMatch) / 100) * 100);
+  }
+
+  function clientDirectoryCard(client, context = {}) {
+    const searchable = `${client.name} ${client.contact || ""} ${client.bio} ${client.industries.join(" ")} ${client.tools.join(" ")}`;
+    return `
+      <article class="hatcher-row-card" data-client-id="${client.id}" data-type="${escapeHtml(client.type)}" data-rating="${parseFloat(client.rating) || 0}" data-posted="${Number(client.posted) || 0}" data-hire="${parseFloat(client.hireRate) || 0}" data-score="${clientMatchScore(client, context)}" data-industry="${escapeHtml(client.industries[0] || "")}" data-industry-list="${escapeHtml(client.industries.join("|"))}" data-search="${escapeHtml(searchable)}" onclick="SkillNestApp.openClientProfile('${client.id}')">
+        <div class="hatcher-row-avatar">${userAvatar(client, "avatar-xl")}</div>
+        <div class="hatcher-row-body">
+          <div class="hatcher-row-head">
+            <div>
+              <h3>${escapeHtml(client.name)}</h3>
+              <p class="hatcher-row-level">${escapeHtml(client.type)}${client.contact ? ` · ${escapeHtml(client.contact)}` : ""}</p>
+            </div>
+            <button class="btn secondary small hatcher-message-btn" type="button" onclick="event.stopPropagation(); SkillNestApp.messageClient('${client.id}')">✉️ Message</button>
+          </div>
+          <p class="hatcher-row-bio">${escapeHtml(client.bio)}</p>
+          <div class="metric-grid compact-metric-grid">
+            <div><strong>${client.posted}</strong><span>posted</span></div>
+            <div><strong>${client.rating}</strong><span>rating</span></div>
+            <div><strong>${client.hireRate}</strong><span>hire rate</span></div>
+          </div>
+          <div class="tag-row">${client.industries.map((item) => tag(item)).join("")}</div>
+        </div>
+      </article>
+    `;
+  }
+
+  function clientCard(client, compact = false) {
+    return `
+      <article class="operator-card ${compact ? "compact-operator" : ""}" onclick="SkillNestApp.openClientProfile('${client.id}')">
+        <div class="operator-head">
+          <div class="avatar">${client.initials}</div>
+          <div>
+            <h3>${escapeHtml(client.name)}</h3>
+            <p>${escapeHtml(client.type)}</p>
+          </div>
+        </div>
+        <div class="metric-grid">
+          <div><strong>${client.posted}</strong><span>posted</span></div>
+          <div><strong>${client.rating}</strong><span>rating</span></div>
+          <div><strong>${client.hireRate}</strong><span>hire rate</span></div>
+        </div>
+        <div class="tag-row">${client.industries.map((item) => tag(item)).join("")}</div>
+        <p class="tools">Tools: ${client.tools.join(", ")}</p>
+      </article>
+    `;
+  }
+
+  function recommendedClients(industry = "", tools = []) {
+    const context = { industry, tools };
+    const recommended = [...clients]
+      .sort((a, b) => clientMatchScore(b, context) - clientMatchScore(a, context))
+      .slice(0, 3);
+
+    return `
+      <div class="recommendations">
+        <div class="card-title-row">
+          <h2>Recommended clients</h2>
+          <span class="tag">${industry ? `Matched to ${escapeHtml(industry)}` : "Top rated"}</span>
+        </div>
+        <div class="operator-grid">${recommended.map((client) => clientCard(client, true)).join("")}</div>
+      </div>
+    `;
+  }
+
+  function clientDetail(client) {
+    return modal(`
+      <div class="operator-head detail-operator-head">
+        <div class="avatar">${client.initials}</div>
+        <div>
+          <h1>${escapeHtml(client.name)}</h1>
+          <p>${escapeHtml(client.type)}${client.contact ? ` · ${escapeHtml(client.contact)}` : ""}</p>
+        </div>
+      </div>
+      <p>${escapeHtml(client.bio)}</p>
+      <div class="metric-grid">
+        <div><strong>${client.posted}</strong><span>posted</span></div>
+        <div><strong>${client.rating}</strong><span>rating</span></div>
+        <div><strong>${client.hireRate}</strong><span>hire rate</span></div>
+      </div>
+      <div class="tag-row">${client.industries.map((item) => tag(item)).join("")}</div>
+      <div class="task-actions modal-actions">
+        <button class="btn primary full" type="button" onclick="SkillNestApp.messageClient('${client.id}')">✉️ Message <span data-no-i18n>${escapeHtml(client.name)}</span></button>
+      </div>
+      <div class="operator-tabs">
+        <button class="tab active" type="button" onclick="SkillNestApp.showOperatorTab(event, 'posts')">Recent posts</button>
+        <button class="tab" type="button" onclick="SkillNestApp.showOperatorTab(event, 'industries')">Industries</button>
+        <button class="tab" type="button" onclick="SkillNestApp.showOperatorTab(event, 'tools')">Tools</button>
+      </div>
+      <div class="tab-panel show" data-tab-panel="posts">
+        <div class="offer-list">
+          ${client.recentPosts.map((post) => `
+            <article>
+              <strong>${escapeHtml(post.title)}</strong>
+              <span>${escapeHtml(post.industry)} · ${escapeHtml(post.level)} · ${escapeHtml(post.status)}</span>
+            </article>
+          `).join("")}
+        </div>
+      </div>
+      <div class="tab-panel" data-tab-panel="industries">
+        <div class="tag-row">${client.industries.map((item) => tag(item)).join("")}</div>
+      </div>
+      <div class="tab-panel" data-tab-panel="tools">
+        <div class="tag-row">${client.tools.map((item) => tag(item)).join("")}</div>
+      </div>
+    `);
   }
 
   function verifiedWorkCard(work) {
@@ -2548,6 +2723,7 @@ window.SkillNestComponents = (() => {
             <a href="#create-hatch" onclick="SkillNestApp.startNewHatch()">Post a Hatch</a>
             <a href="#browse">Browse Hatches</a>
             <a href="#hatchers">Find Hatchers</a>
+            <a href="#clients">Browse Clients</a>
             <a href="#verified-work">Verified Results</a>
             ${hatcherLink}
             <a href="#about">About Hatch</a>
@@ -2596,10 +2772,16 @@ window.SkillNestComponents = (() => {
     recentVerifiedWorkSection,
     modal,
     nav,
+    statsBanner,
     nextClarification,
     hatcherDirectoryCard,
     hatcherLevelBucket,
     hatcherMatchScore,
+    clientDirectoryCard,
+    clientMatchScore,
+    clientCard,
+    clientDetail,
+    recommendedClients,
     operatorCard,
     operatorDetail,
     recommendedOperators,

@@ -302,6 +302,80 @@ window.SkillNestData = {
     },
   ],
 
+  // Clients are the businesses posting Hatches — the flip side of `operators`.
+  // A Hatcher browses this directory to find people worth reaching out to, so
+  // the shape mirrors `operators`: enough signal to rank and filter (how much
+  // they post, how they treat Hatchers, how quickly they reply) plus a short
+  // list of what they've recently posted, shown in the profile modal.
+  clients: [
+    {
+      id: "harborview-bistro",
+      name: "Harborview Bistro",
+      contact: "Nina Alvarez",
+      initials: "HB",
+      type: "Small Business",
+      posted: 12,
+      rating: "4.8",
+      hireRate: "83%",
+      joinedAt: "2026-01-18",
+      avgResponseMinutes: 22,
+      repeatHatcherRate: 58,
+      lastActiveAt: "2026-07-23",
+      industries: ["Restaurant", "Local Services"],
+      tools: ["Canva", "Notion", "ChatGPT"],
+      bio: "Neighborhood restaurant group posting menu, content, and admin Hatches most weeks.",
+      recentPosts: [
+        { title: "Seasonal menu rewrite", industry: "Restaurant", level: "L2", status: "Hatched" },
+        { title: "Weekend brunch captions", industry: "Restaurant", level: "L1", status: "Hatched" },
+        { title: "Reservation reply templates", industry: "Local Services", level: "L1", status: "Open" },
+      ],
+    },
+    {
+      id: "northloop-goods",
+      name: "North Loop Goods",
+      contact: "Priya Raman",
+      initials: "NG",
+      type: "E-commerce Brand",
+      posted: 27,
+      rating: "4.9",
+      hireRate: "91%",
+      joinedAt: "2025-10-02",
+      avgResponseMinutes: 14,
+      repeatHatcherRate: 74,
+      lastActiveAt: "2026-07-24",
+      industries: ["E-commerce", "Education"],
+      tools: ["Shopify", "Sheets", "Zapier", "Claude"],
+      bio: "Online homewares store that hires Hatchers for product content, data cleanup, and workflows.",
+      recentPosts: [
+        { title: "Product description refresh", industry: "E-commerce", level: "L2", status: "Hatched" },
+        { title: "Inventory sheet cleanup", industry: "E-commerce", level: "L3", status: "Hatched" },
+        { title: "Order-status automation", industry: "E-commerce", level: "L3", status: "Open" },
+      ],
+    },
+    {
+      id: "cedar-realty",
+      name: "Cedar & Vine Realty",
+      contact: "Marcus Bell",
+      initials: "CV",
+      type: "Agency",
+      posted: 8,
+      rating: "4.7",
+      hireRate: "76%",
+      joinedAt: "2026-03-11",
+      avgResponseMinutes: 41,
+      repeatHatcherRate: 49,
+      lastActiveAt: "2026-07-19",
+      industries: ["Real Estate", "Local Services"],
+      tools: ["ChatGPT", "Canva", "Notion"],
+      bio: "Boutique real-estate agency posting listing copy, flyers, and client-facing templates.",
+      recentPosts: [
+        { title: "Listing description pack", industry: "Real Estate", level: "L2", status: "Hatched" },
+        { title: "Open-house flyer set", industry: "Real Estate", level: "L1", status: "Hatched" },
+        { title: "Buyer follow-up templates", industry: "Local Services", level: "L2", status: "Open" },
+      ],
+    },
+  ],
+
   hatcherProfiles: [
     {
       id: "toby-cheng",

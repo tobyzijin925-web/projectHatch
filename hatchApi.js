@@ -1189,6 +1189,66 @@ async function handleAdminMessage(req, res) {
   sendJson(res, 200, { ok: true, to: recipient.username });
 }
 
+// ── Site stats banner ────────────────────────────────────────────────────
+// Vanity metrics shown in the rolling banner under the top nav. Admin-set and
+// stored as a single JSON blob in the meta table, then served publicly (no
+// auth) so every visitor — signed in or not — sees the same numbers. The
+// previewMode flag reframes them as "what the live dashboard will show as we
+// grow" until a founder flips it to live, which is why it defaults to true.
+const SITE_STATS_KEY = "site_stats";
+const SITE_STATS_FIELDS = ["people", "openHatches", "activeHatchers", "activeClients", "hatchesLastWeek"];
+
+function defaultSiteStats() {
+  return {
+    people: 200,
+    openHatches: 45,
+    activeHatchers: 120,
+    activeClients: 80,
+    hatchesLastWeek: 60,
+    previewMode: true,
+    updatedAt: null,
+  };
+}
+
+function readSiteStats() {
+  const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(SITE_STATS_KEY);
+  if (!row) return defaultSiteStats();
+  try {
+    const stored = JSON.parse(row.value);
+    const stats = defaultSiteStats();
+    SITE_STATS_FIELDS.forEach((field) => {
+      const value = Number(stored[field]);
+      if (Number.isFinite(value)) stats[field] = Math.max(0, Math.round(value));
+    });
+    stats.previewMode = Boolean(stored.previewMode);
+    stats.updatedAt = stored.updatedAt || null;
+    return stats;
+  } catch {
+    return defaultSiteStats();
+  }
+}
+
+function handleGetSiteStats(req, res) {
+  sendJson(res, 200, { ok: true, stats: readSiteStats() });
+}
+
+async function handleSetSiteStats(req, res) {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const body = await readJsonBody(req).catch(() => ({}));
+  const stats = readSiteStats();
+  SITE_STATS_FIELDS.forEach((field) => {
+    if (body[field] === undefined || body[field] === "") return;
+    const value = Number(body[field]);
+    if (Number.isFinite(value)) stats[field] = Math.max(0, Math.min(100_000_000, Math.round(value)));
+  });
+  if (body.previewMode !== undefined) stats.previewMode = Boolean(body.previewMode);
+  stats.updatedAt = nowIso();
+  db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    .run(SITE_STATS_KEY, JSON.stringify(stats));
+  sendJson(res, 200, { ok: true, stats });
+}
+
 // ── Router ─────────────────────────────────────────────────────────────────
 
 const HATCH_ACTIONS = {
@@ -1221,6 +1281,12 @@ async function route(req, res, url) {
 
   if (req.method === "POST" && p === "/api/admin/messages") return handleAdminMessage(req, res);
 
+  if (p === "/api/site-stats") {
+    if (req.method === "GET") return handleGetSiteStats(req, res);
+    if (req.method === "POST") return handleSetSiteStats(req, res);
+    return fail(res, 405, "Method not allowed.");
+  }
+
   if (p === "/api/hatches") {
     if (req.method === "GET") return handleListHatches(req, res, url);
     if (req.method === "POST") return handleCreateHatch(req, res);
@@ -1252,7 +1318,7 @@ async function route(req, res, url) {
   return fail(res, 404, "Unknown API route.");
 }
 
-const API_PREFIXES = ["/api/auth", "/api/hatches", "/api/messages", "/api/hatcher-applications", "/api/admin"];
+const API_PREFIXES = ["/api/auth", "/api/hatches", "/api/messages", "/api/hatcher-applications", "/api/admin", "/api/site-stats"];
 
 // Returns true when the request was an API route this module owns.
 function handle(req, res) {
