@@ -565,7 +565,7 @@ window.SkillNestPages = (() => {
           ${C.field("Email", "operatorAuthEmail", "you@example.com", "email")}
           ${C.field("Password", "operatorAuthPassword", "Create a password", "password")}
         </div>
-        <button class="btn primary full" type="submit">Continue</button>
+        <button class="btn primary full" type="submit">Join as a Hatcher</button>
         <p class="form-note">MVP preview: your account and the Google option are simulated locally on this device.</p>
       </form>
     `;
@@ -632,6 +632,10 @@ window.SkillNestPages = (() => {
   }
 
   function operatorPage(account, wizard = { step: "account", draft: {} }, loggedIn = false) {
+    /* Hatcher application wizard DISABLED — joining as a Hatcher is now instant.
+       Selecting "Become a Hatcher" and setting up an account makes you a Hatcher
+       right away; there is no about-you / focus-areas / submit / review flow.
+       The multi-step application is kept here, commented out, in case it returns.
     const { step, draft } = wizard;
     const stepCopy = {
       account: "First, set up the account you’ll hatch under.",
@@ -646,13 +650,14 @@ window.SkillNestPages = (() => {
         : step === "done"
           ? operatorDoneStep()
           : operatorAccountStep(account, loggedIn);
+    */
     return `
       <main class="section page">
         <div class="form-layout">
           <div class="form-copy">
             <div class="section-label">Become a Hatcher</div>
-            <h1>Apply to build practical Hatches.</h1>
-            <p>${stepCopy[step] || stepCopy.account}</p>
+            <h1>Join as a Hatcher and start building.</h1>
+            <p>Set up the account you’ll hatch under — that’s it. You’re a Hatcher the moment you join.</p>
             <div class="operator-info">
               <h2>Growth path</h2>
               <p>L1 support Hatches -> L2 business Hatches -> L3 specialized Hatches -> L4 strategy later.</p>
@@ -661,8 +666,7 @@ window.SkillNestPages = (() => {
             </div>
           </div>
           <div class="wizard-column">
-            ${operatorStepper(step)}
-            ${stepMarkup}
+            ${operatorAccountStep(account, loggedIn)}
           </div>
         </div>
       </main>
@@ -789,6 +793,7 @@ window.SkillNestPages = (() => {
               ? `You have ${unread} unread message${unread === 1 ? "" : "s"} waiting.`
               : "Chat with clients and Hatchers, and get updates from Hatch, in Messages."}</p>
           </section>
+          ${/* Hatcher application card DISABLED — joining as a Hatcher is instant now (no application or review step).
           <section class="profile-card wide">
             <div class="card-title-row">
               <h2>Hatcher application</h2>
@@ -796,6 +801,7 @@ window.SkillNestPages = (() => {
             </div>
             ${operatorApplicationSummary(operatorApplications)}
           </section>
+          */ ""}
           ${account.isAdmin ? adminPanel(adminData, adminHatches) : ""}
         </div>
       </main>
@@ -853,6 +859,7 @@ window.SkillNestPages = (() => {
     const sourceLabel = { posted: "posted here", seed: "demo listing", backend: "backend" };
     return `
       ${statsBannerAdminCard()}
+      ${/* Admin · Hatcher applications review DISABLED — Hatchers no longer submit applications to approve/reject.
       <section class="profile-card wide admin-panel">
         <div class="card-title-row"><h2>Admin &middot; Hatcher applications</h2></div>
         ${pending.length ? `
@@ -880,6 +887,7 @@ window.SkillNestPages = (() => {
         ` : `<p class="muted-text">No pending applications.</p>`}
         ${reviewed ? `<p class="muted-text">${reviewed} application${reviewed === 1 ? "" : "s"} reviewed earlier.</p>` : ""}
       </section>
+      */ ""}
       <section class="profile-card wide admin-panel">
         <div class="card-title-row"><h2>Admin &middot; All Hatches</h2></div>
         ${adminHatches.length ? `

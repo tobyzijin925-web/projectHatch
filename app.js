@@ -4547,6 +4547,15 @@ window.SkillNestApp = (() => {
     render();
   }
 
+  // Selecting "Become a Hatcher" makes you a Hatcher — so normalize any prior
+  // role up to include Hatcher rather than dropping into an application flow.
+  function hatcherRoleFor(role) {
+    if (!role) return "Hatcher";
+    if (role.includes("Hatcher")) return role;
+    if (role.includes("Client")) return "Client and Hatcher";
+    return "Hatcher";
+  }
+
   function operatorAccountStep(event) {
     event.preventDefault();
     const email = document.getElementById("operatorAuthEmail").value.trim();
@@ -4558,20 +4567,20 @@ window.SkillNestApp = (() => {
       name: sameEmail ? existing.name || "" : "",
       email,
       password,
-      role: sameEmail && existing.role ? existing.role : "Hatcher",
+      role: hatcherRoleFor(sameEmail ? existing.role : ""),
       provider: "Email",
       joinedAt: sameEmail && existing.joinedAt ? existing.joinedAt : new Date().toISOString(),
     };
     localStorage.setItem("skillnestAccount", JSON.stringify(account));
     localStorage.setItem("skillnestLoggedIn", "true");
-    saveOperatorWizard("about", getOperatorWizard().draft);
-    render();
+    // Instant Hatcher — no application step. Land straight on the profile.
+    finishOperatorWizard("profile");
   }
 
   function operatorGoogleSignup() {
     const existing = getAccount();
     const account = existing.email
-      ? { ...existing, provider: "Google (simulated)" }
+      ? { ...existing, role: hatcherRoleFor(existing.role), provider: "Google (simulated)" }
       : {
         username: "google_hatcher",
         name: "",
@@ -4583,13 +4592,19 @@ window.SkillNestApp = (() => {
       };
     localStorage.setItem("skillnestAccount", JSON.stringify(account));
     localStorage.setItem("skillnestLoggedIn", "true");
-    saveOperatorWizard("about", getOperatorWizard().draft);
-    render();
+    // Instant Hatcher — no application step. Land straight on the profile.
+    finishOperatorWizard("profile");
   }
 
   function operatorContinueLoggedIn() {
-    saveOperatorWizard("about", getOperatorWizard().draft);
-    render();
+    // Already signed in — just make sure the account carries the Hatcher role,
+    // then land on the profile. No application step.
+    const account = getAccount();
+    const role = hatcherRoleFor(account.role);
+    if (role !== account.role) {
+      localStorage.setItem("skillnestAccount", JSON.stringify({ ...account, role }));
+    }
+    finishOperatorWizard("profile");
   }
 
   function operatorStepNext(event) {
