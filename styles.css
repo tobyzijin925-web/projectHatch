@@ -2166,6 +2166,10 @@ button.chip:hover {
   align-items: flex-start;
   gap: var(--space-4);
   padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: var(--shadow);
   cursor: pointer;
   transition: transform 160ms ease, box-shadow 160ms ease;
 }
