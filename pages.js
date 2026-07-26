@@ -210,6 +210,11 @@ window.SkillNestPages = (() => {
             <div class="browse-main">
               <div class="browse-toolbar">
                 <span class="result-hint" id="taskResultHint"></span>
+                <button class="btn ghost small browse-refresh" type="button" onclick="SkillNestApp.refreshBrowse()" title="Refresh the feed" aria-label="Refresh Hatches feed">
+                  <span class="browse-refresh-icon" aria-hidden="true">↻</span>
+                  <span>Refresh</span>
+                </button>
+                <span class="browse-refresh-status" id="browseRefreshStatus" role="status" aria-live="polite"></span>
                 <label class="sort-control">
                   <span>Sort by</span>
                   <select id="sortFilter" onchange="SkillNestApp.applyTaskFilters()">
@@ -845,6 +850,11 @@ window.SkillNestPages = (() => {
             <input id="statPreviewMode" type="checkbox" ${stats.previewMode ? "checked" : ""} onchange="SkillNestApp.previewSiteStatsBanner()" />
             <span class="stats-admin-switch-track" aria-hidden="true"></span>
             <span class="stats-admin-switch-label">Show as a preview of what the live dashboard will show as we grow</span>
+          </label>
+          <label class="stats-admin-switch">
+            <input id="statShowCardAge" type="checkbox" ${stats.showCardAge !== false ? "checked" : ""} />
+            <span class="stats-admin-switch-track" aria-hidden="true"></span>
+            <span class="stats-admin-switch-label">Show a "Posted … ago" time on each browse card</span>
           </label>
           <div class="stats-admin-preview-wrap">
             <span class="filter-heading">Live preview</span>

@@ -1211,6 +1211,7 @@ function defaultSiteStats() {
     activeClients: 80,
     hatchesLastWeek: 60,
     previewMode: true,
+    showCardAge: true,
     updatedAt: null,
   };
 }
@@ -1226,6 +1227,7 @@ function readSiteStats() {
       if (Number.isFinite(value)) stats[field] = Math.max(0, Math.round(value));
     });
     stats.previewMode = Boolean(stored.previewMode);
+    stats.showCardAge = stored.showCardAge === undefined ? true : Boolean(stored.showCardAge);
     stats.updatedAt = stored.updatedAt || null;
     return stats;
   } catch {
@@ -1248,6 +1250,7 @@ async function handleSetSiteStats(req, res) {
     if (Number.isFinite(value)) stats[field] = Math.max(0, Math.min(100_000_000, Math.round(value)));
   });
   if (body.previewMode !== undefined) stats.previewMode = Boolean(body.previewMode);
+  if (body.showCardAge !== undefined) stats.showCardAge = Boolean(body.showCardAge);
   stats.updatedAt = nowIso();
   db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     .run(SITE_STATS_KEY, JSON.stringify(stats));

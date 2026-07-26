@@ -2183,8 +2183,56 @@ button.chip:hover {
   color: var(--ink);
 }
 
+/* Manual feed refresh button in the browse toolbar. */
+.browse-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.browse-refresh-icon {
+  display: inline-block;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.browse-refresh.is-refreshing {
+  opacity: 0.7;
+}
+
+.browse-refresh.is-refreshing .browse-refresh-icon {
+  animation: browse-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes browse-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Transient "Up to date" / error note beside the refresh button. */
+.browse-refresh-status {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.browse-refresh-status.show {
+  opacity: 1;
+}
+
 .browse-grid {
   grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+}
+
+/* Grey "Posted … ago" line pinned to the bottom edge of a browse card. */
+.task-card-age {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
 }
 
 /* Operator directory: two wide rows per line, photo on the left of each row,

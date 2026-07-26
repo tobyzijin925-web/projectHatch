@@ -674,3 +674,16 @@ window.SkillNestData = {
     ["L4", "Advanced strategy", "Higher-trust strategic work. Coming later."],
   ],
 };
+
+// Real Hatches carry their own createdAt from the backend. The static demo
+// Hatches don't, so stamp each one with a recent, spread-out post time at load
+// (a few minutes ago up to a couple of weeks) — that way the browse feed's
+// "Posted … ago" labels look organically aged and never go stale between runs.
+(function seedTaskPostTimes() {
+  const now = Date.now();
+  (window.SkillNestData.tasks || []).forEach((task, index) => {
+    if (task.createdAt) return;
+    const minutesAgo = Math.round(7 * Math.pow(1.7, index));
+    task.createdAt = new Date(now - minutesAgo * 60000).toISOString();
+  });
+})();

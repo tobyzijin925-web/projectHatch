@@ -1781,6 +1781,44 @@ window.SkillNestComponents = (() => {
     return `<span class="task-language-badge"><span aria-hidden="true">🌐</span><span>${escapeHtml(sourceName)}</span></span>`;
   }
 
+  // Compact "time since" label for card footers ("just now", "3 hours ago",
+  // "2 days ago"). Returns "" for a missing/unparseable timestamp so callers
+  // can simply omit the line.
+  function timeAgo(input) {
+    const then = new Date(input).getTime();
+    if (Number.isNaN(then)) return "";
+    const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
+    if (secs < 45) return "just now";
+    const units = [
+      [60, "minute"],
+      [3600, "hour"],
+      [86400, "day"],
+      [604800, "week"],
+      [2592000, "month"],
+      [31536000, "year"],
+    ];
+    // Find the largest unit that fits, then count in that unit.
+    let label = "minute";
+    let divisor = 60;
+    for (let i = 0; i < units.length; i += 1) {
+      if (secs < units[i][0]) break;
+      divisor = units[i][0];
+      label = units[i][1];
+    }
+    const value = Math.max(1, Math.floor(secs / divisor));
+    return `${value} ${label}${value === 1 ? "" : "s"} ago`;
+  }
+
+  // Grey "Posted … ago" line pinned to a card's bottom edge. Admins can hide it
+  // site-wide via the showCardAge stat flag (defaults on).
+  function cardAgeLine(dateStr) {
+    const posted = dateStr || "";
+    const ageText = posted ? timeAgo(posted) : "";
+    const showAge = (window.SkillNestApp?.getSiteStats?.() || {}).showCardAge !== false;
+    if (!showAge || !ageText) return "";
+    return `<div class="task-card-age"><time datetime="${escapeHtml(String(posted))}">Posted ${ageText}</time></div>`;
+  }
+
   function taskCard(task, interactive = false) {
     const state = taskLanguageState(task);
     const shown = state.display;
@@ -1821,6 +1859,7 @@ window.SkillNestComponents = (() => {
             </div>
           ` : ""}
         </div>
+        ${cardAgeLine(task.createdAt || task.postedAt)}
       </article>
     `;
   }
