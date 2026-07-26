@@ -13,8 +13,11 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // reviewing hatcher applications, and messaging any inbox. Emails are not
 // verified, so admin belongs to whoever registers the address first — fine
 // for local use, revisit before hosting this anywhere public.
+// The real admin address is set via HATCH_ADMIN_EMAILS in .env.local (git-
+// ignored) so it isn't baked into committed source. The placeholder below is
+// only a last-resort default and grants admin to nobody real.
 const ADMIN_EMAILS = new Set(
-  (process.env.HATCH_ADMIN_EMAILS || "derekzhuang12345@gmail.com")
+  (process.env.HATCH_ADMIN_EMAILS || "admin@example.com")
     .split(",")
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean),
