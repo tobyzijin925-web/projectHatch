@@ -856,6 +856,11 @@ window.SkillNestPages = (() => {
             <span class="stats-admin-switch-track" aria-hidden="true"></span>
             <span class="stats-admin-switch-label">Show a "Posted … ago" time on each browse card</span>
           </label>
+          <label class="stats-admin-switch">
+            <input id="statAiDebug" type="checkbox" ${stats.aiDebug === true ? "checked" : ""} />
+            <span class="stats-admin-switch-track" aria-hidden="true"></span>
+            <span class="stats-admin-switch-label">AI debugging mode — show the intake debug panel, fallback notices, and console logs (leave off for a clean MVP)</span>
+          </label>
           <div class="stats-admin-preview-wrap">
             <span class="filter-heading">Live preview</span>
             <div class="stats-admin-preview" id="statsBannerPreview">${C.statsBanner(stats)}</div>

@@ -1199,14 +1199,17 @@ window.SkillNestComponents = (() => {
     const activeSectionId = builderSections[activeIndex]?.id || "";
     const showFileTools = !thinking && !ready && !invalid && activeSectionId === "references";
     const debugState = window.HatchAIController?.getState?.() || {};
+    // AI debugging output is admin-gated (off by default) so a normal visitor
+    // never sees intake internals or raw model responses.
+    const aiDebugOn = (window.SkillNestApp?.getSiteStats?.() || {}).aiDebug === true;
     // Hide the fallback greeting while thinking with an empty thread, so the
     // very first response shows just the thinking bubble, then types in.
     const threadMessages = messages.length ? messages : (thinking ? [] : shownMessages);
 
     return `
       <section class="assistant-panel">
-        ${aiError ? `<div class="assistant-dev-warning">${escapeHtml(aiError)}</div>` : ""}
-        ${aiDebugPanelMarkup(debugState)}
+        ${aiDebugOn && aiError ? `<div class="assistant-dev-warning">${escapeHtml(aiError)}</div>` : ""}
+        ${aiDebugOn ? aiDebugPanelMarkup(debugState) : ""}
         <div class="assistant-thread" id="assistantThread">
           ${threadMessages.map((message, index) => `
             <article class="assistant-message ${message.role}" data-msg-index="${index}">

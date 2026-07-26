@@ -690,7 +690,25 @@ window.SkillNestApp = (() => {
     tick();
   }
 
+  // Single switch for all AI intake debugging output — the on-screen debug
+  // panel and every console log below. Admin-controlled via the aiDebug site
+  // setting; off by default so a normal visitor sees no debugging steps.
+  function aiDebugEnabled() {
+    try {
+      return getSiteStats().aiDebug === true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Gated console logger used in place of direct console.* calls for intake
+  // debugging, so those logs are silent unless debug mode is on.
+  function aiDebugLog(...args) {
+    if (aiDebugEnabled()) console.log(...args);
+  }
+
   function debugFlow(label, data = {}) {
+    if (!aiDebugEnabled()) return;
     try {
       console.debug(`[Hatch flow] ${label}`, JSON.parse(JSON.stringify(data)));
     } catch {
@@ -2160,7 +2178,7 @@ window.SkillNestApp = (() => {
       value = cleanSentence(raw).replace(/\.$/, "") || currentBrief.title || "New Hatch";
     }
 
-    console.info("[Hatch debug] normalized answer", {
+    aiDebugLog("[Hatch debug] normalized answer", {
       activeSection: sectionId,
       normalizedKey: key,
       raw,
@@ -2209,7 +2227,7 @@ window.SkillNestApp = (() => {
       nextBrief.readiness = "Ready to Post";
     }
 
-    console.info("[Hatch debug] flow state", {
+    aiDebugLog("[Hatch debug] flow state", {
       activeSection: sectionId,
       normalizedValue: normalized.value,
       readyToSubmit: nextBrief.stage === "ready_to_post",
@@ -2513,12 +2531,12 @@ window.SkillNestApp = (() => {
       && brief.nextQuestion.suggestions.some((item) => normalizedAnswer(item) === normalizedAnswer(answer));
     const answeredCurrentTurn = Boolean(resolution?.answered || quickReplyAnswer);
     if (answeredCurrentTurn) markTurnAnswered(activeTurn.turnId);
-    console.log("[Hatch Bug] activeSection before:", sectionId);
-    console.log("[Hatch Bug] activeQuestion before:", state.active_question);
-    console.log("[Hatch Bug] userMessage:", answer);
-    console.log("[Hatch Bug] expectedAnswerType:", key);
-    console.log("[Hatch Bug] turnId:", activeTurn.turnId);
-    console.log("[Hatch Bug] quickReplies before:", brief.nextQuestion?.suggestions || []);
+    aiDebugLog("[Hatch Bug] activeSection before:", sectionId);
+    aiDebugLog("[Hatch Bug] activeQuestion before:", state.active_question);
+    aiDebugLog("[Hatch Bug] userMessage:", answer);
+    aiDebugLog("[Hatch Bug] expectedAnswerType:", key);
+    aiDebugLog("[Hatch Bug] turnId:", activeTurn.turnId);
+    aiDebugLog("[Hatch Bug] quickReplies before:", brief.nextQuestion?.suggestions || []);
     debugFlow("before user reply", {
       active_section: sectionId,
       active_question: state.active_question,
@@ -2594,11 +2612,11 @@ window.SkillNestApp = (() => {
       turn: activeTurn,
     });
 
-    console.log("[Hatch Bug] DeepSeek parsed:", result);
-    console.log("[Hatch Bug] briefUpdates:", result.brief_updates || result.briefUpdates || result.section_updates || {});
-    console.log("[Hatch Bug] fieldsUpdated:", result.fields_updated || result.fieldsUpdated || []);
-    console.log("[Hatch Bug] nextQuestion:", result.next_question || result.nextQuestion || "");
-    console.log("[Hatch Bug] missingInfo:", result.missing_info || result.missingInfo || result.missing_fields || []);
+    aiDebugLog("[Hatch Bug] DeepSeek parsed:", result);
+    aiDebugLog("[Hatch Bug] briefUpdates:", result.brief_updates || result.briefUpdates || result.section_updates || {});
+    aiDebugLog("[Hatch Bug] fieldsUpdated:", result.fields_updated || result.fieldsUpdated || []);
+    aiDebugLog("[Hatch Bug] nextQuestion:", result.next_question || result.nextQuestion || "");
+    aiDebugLog("[Hatch Bug] missingInfo:", result.missing_info || result.missingInfo || result.missing_fields || []);
 
     // Normalize the full response: `result.brief` is only the nested template
     // summary (project_title, goal, ...) and carries no assistant_message or
@@ -2638,7 +2656,7 @@ window.SkillNestApp = (() => {
         turn: activeTurn,
         duplicateRetry: true,
       });
-      console.log("[Hatch Bug] DeepSeek retry parsed:", result);
+      aiDebugLog("[Hatch Bug] DeepSeek retry parsed:", result);
       normalizedBrief = mergeResolvedAnswer(normalizeProjectBrief(result, { mode: "clarify", brief }), resolution);
       assistantText = result.assistantMessage || result.assistant_message || normalizedBrief.assistantMessage || C.fallbackAssistantMessage(normalizedBrief);
       const retryQuestionText = result.next_question || result.nextQuestion || "";
@@ -2702,8 +2720,8 @@ window.SkillNestApp = (() => {
       missing_before: missingInfoBefore,
       missing_after: missingInfoAfter,
     });
-    console.log("[Hatch Bug] activeSection after:", nextBrief.activeSection || nextBrief.nextQuestion?.key || "");
-    console.log("[Hatch Bug] missingInfo after:", missingInfoAfter);
+    aiDebugLog("[Hatch Bug] activeSection after:", nextBrief.activeSection || nextBrief.nextQuestion?.key || "");
+    aiDebugLog("[Hatch Bug] missingInfo after:", missingInfoAfter);
     window.HatchAIController?.writeState?.({
       activeQuestion: nextBrief.activeQuestion || nextBrief.nextQuestion?.prompt || "",
       activeSection: nextBrief.activeSection || sectionId,
@@ -2901,10 +2919,10 @@ window.SkillNestApp = (() => {
       || allRequiredComplete
     );
 
-    console.log("[Hatch Flow] readiness:", brief.readiness || brief.stage || "");
-    console.log("[Hatch Flow] canSubmit:", canSubmit);
-    console.log("[Hatch Flow] missingInfo:", missingInfo);
-    console.log("[Hatch Flow] finalReviewTriggered:", finalReviewTriggered);
+    aiDebugLog("[Hatch Flow] readiness:", brief.readiness || brief.stage || "");
+    aiDebugLog("[Hatch Flow] canSubmit:", canSubmit);
+    aiDebugLog("[Hatch Flow] missingInfo:", missingInfo);
+    aiDebugLog("[Hatch Flow] finalReviewTriggered:", finalReviewTriggered);
 
     return finalReviewTriggered;
   }
@@ -5239,6 +5257,9 @@ window.SkillNestApp = (() => {
     previewMode: true,
     // Admin-controlled: show the grey "Posted … ago" line on browse cards.
     showCardAge: true,
+    // Admin-controlled: show AI debugging output (the debug panel + console
+    // logs). Off by default so a plain visitor never sees intake internals.
+    aiDebug: false,
   };
 
   function getSiteStats() {
@@ -5294,6 +5315,7 @@ window.SkillNestApp = (() => {
       hatchesLastWeek: num("statHatchesLastWeek"),
       previewMode: Boolean(document.getElementById("statPreviewMode")?.checked),
       showCardAge: Boolean(document.getElementById("statShowCardAge")?.checked),
+      aiDebug: Boolean(document.getElementById("statAiDebug")?.checked),
     };
   }
 
@@ -5529,7 +5551,7 @@ window.SkillNestApp = (() => {
     const startedAt = performance.now();
     const result = await window.HatchAIController.testDeepSeekConnection();
     result.responseTimeMs = Math.round(performance.now() - startedAt);
-    console.info("[Hatch AI] DeepSeek connection test", result);
+    aiDebugLog("[Hatch AI] DeepSeek connection test", result);
     return result;
   }
 

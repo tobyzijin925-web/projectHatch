@@ -1212,6 +1212,7 @@ function defaultSiteStats() {
     hatchesLastWeek: 60,
     previewMode: true,
     showCardAge: true,
+    aiDebug: false,
     updatedAt: null,
   };
 }
@@ -1228,6 +1229,7 @@ function readSiteStats() {
     });
     stats.previewMode = Boolean(stored.previewMode);
     stats.showCardAge = stored.showCardAge === undefined ? true : Boolean(stored.showCardAge);
+    stats.aiDebug = Boolean(stored.aiDebug);
     stats.updatedAt = stored.updatedAt || null;
     return stats;
   } catch {
@@ -1251,6 +1253,7 @@ async function handleSetSiteStats(req, res) {
   });
   if (body.previewMode !== undefined) stats.previewMode = Boolean(body.previewMode);
   if (body.showCardAge !== undefined) stats.showCardAge = Boolean(body.showCardAge);
+  if (body.aiDebug !== undefined) stats.aiDebug = Boolean(body.aiDebug);
   stats.updatedAt = nowIso();
   db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     .run(SITE_STATS_KEY, JSON.stringify(stats));
