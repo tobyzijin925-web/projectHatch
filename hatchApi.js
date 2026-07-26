@@ -10,7 +10,7 @@ const { db, transact } = require("./db");
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Accounts whose email is listed here get admin powers: deleting hatches,
-// reviewing hatcher applications, and messaging any inbox. Emails are not
+// reviewing operator applications, and messaging any inbox. Emails are not
 // verified, so admin belongs to whoever registers the address first — fine
 // for local use, revisit before hosting this anywhere public.
 // The real admin address is set via HATCH_ADMIN_EMAILS in .env.local (git-
@@ -89,7 +89,7 @@ function asStringList(value) {
   return value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim());
 }
 
-// Same backstop as the hatcher-application resume field (see resumeData
+// Same backstop as the operator-application resume field (see resumeData
 // below): only keep entries that look like a real data: URL under a sane
 // size, so a malformed or oversized client payload can't bloat the row.
 const MAX_HATCH_FILE_CHARS = 5_000_000; // ~3.7MB raw before base64 overhead
@@ -454,7 +454,9 @@ async function handleSignup(req, res) {
   const name = String(body.name || "").trim();
   const email = String(body.email || "").trim();
   const password = String(body.password || "");
-  const role = ["Client", "Hatcher", "Client and Hatcher"].includes(body.role) ? body.role : "Client and Hatcher";
+  // Accept the current "Operator" roles plus the legacy "Hatcher" wording so
+  // older clients (or cached bundles) can still sign up; stored as-is either way.
+  const role = ["Client", "Operator", "Client and Operator", "Hatcher", "Client and Hatcher"].includes(body.role) ? body.role : "Client and Operator";
 
   if (username.length < 3) return fail(res, 400, "Username must be at least 3 characters.");
   if (!name) return fail(res, 400, "Name is required.");
@@ -663,7 +665,7 @@ function handleStart(req, res, id) {
     guardParams: [user.id],
     note: "Work started",
   });
-  if (result.errorStatus) return failTransition(res, result, id, user, "claimed_by", "Only the Hatcher who claimed this Hatch can start it.");
+  if (result.errorStatus) return failTransition(res, result, id, user, "claimed_by", "Only the Operator who claimed this Hatch can start it.");
   sendJson(res, 200, { ok: true, hatch: result.hatch });
 }
 
@@ -684,7 +686,7 @@ async function handleSubmit(req, res, id) {
     guardParams: [user.id],
     note: "Deliverable submitted",
   });
-  if (result.errorStatus) return failTransition(res, result, id, user, "claimed_by", "Only the Hatcher who claimed this Hatch can submit work.");
+  if (result.errorStatus) return failTransition(res, result, id, user, "claimed_by", "Only the Operator who claimed this Hatch can submit work.");
 
   db.prepare(`
     INSERT INTO submissions (hatch_id, submitted_by, message, attachments_json, created_at)
@@ -786,7 +788,7 @@ async function handleDispute(req, res, id) {
     guardParams: [user.id, user.id],
     note,
   });
-  if (result.errorStatus) return failTransition(res, result, id, user, "either", "Only the client or the Hatcher on this Hatch can open a dispute.");
+  if (result.errorStatus) return failTransition(res, result, id, user, "either", "Only the client or the Operator on this Hatch can open a dispute.");
   const counterpart = result.hatch.createdBy.id === user.id ? result.hatch.claimedBy : result.hatch.createdBy;
   if (counterpart) {
     notify(counterpart.id, {
@@ -907,7 +909,7 @@ async function handleSendMessage(req, res, id) {
 
 // Starts (or continues) a direct conversation. The recipient is either named
 // explicitly ("to": username or email), or resolved from a hatch the sender
-// is on — the client reaches the Hatcher and vice versa — so the frontend
+// is on — the client reaches the Operator and vice versa — so the frontend
 // can offer "Message" buttons without knowing the counterpart's identity.
 async function handleStartConversation(req, res) {
   const user = requireUser(req, res);
@@ -933,10 +935,10 @@ async function handleStartConversation(req, res) {
     if (!recipient) return fail(res, 404, `No account matches "${to}".`);
   } else if (hatch) {
     if (user.id !== hatch.created_by && user.id !== hatch.claimed_by) {
-      return fail(res, 403, "Only the client or the Hatcher on this Hatch can start its conversation.");
+      return fail(res, 403, "Only the client or the Operator on this Hatch can start its conversation.");
     }
     const counterpartId = user.id === hatch.created_by ? hatch.claimed_by : hatch.created_by;
-    if (!counterpartId) return fail(res, 400, "No Hatcher has claimed this Hatch yet.");
+    if (!counterpartId) return fail(res, 400, "No Operator has claimed this Hatch yet.");
     recipient = db.prepare("SELECT id, username FROM users WHERE id = ?").get(counterpartId);
     if (!recipient) return fail(res, 404, "The other person on this Hatch no longer has an account.");
   } else {
@@ -944,12 +946,12 @@ async function handleStartConversation(req, res) {
   }
   if (recipient.id === user.id) return fail(res, 400, "You can't message yourself.");
   // A hatch tag on the thread implies a real relationship: at least one side
-  // must be the hatch's client or Hatcher. Without this, anyone could dress
+  // must be the hatch's client or Operator. Without this, anyone could dress
   // up a cold message with an official-looking hatch context chip.
   if (hatch) {
     const pair = [user.id, recipient.id];
     if (!pair.includes(hatch.created_by) && !pair.includes(hatch.claimed_by)) {
-      return fail(res, 403, "You can only tag a Hatch when you or the recipient is its client or Hatcher.");
+      return fail(res, 403, "You can only tag a Hatch when you or the recipient is its client or Operator.");
     }
   }
 
@@ -1015,7 +1017,7 @@ async function handleUpdateProfile(req, res) {
   sendJson(res, 200, { ok: true, account: accountPayload(fresh) });
 }
 
-// ── Hatcher application handlers ───────────────────────────────────────────
+// ── Operator application handlers ───────────────────────────────────────────
 
 async function handleSubmitApplication(req, res) {
   const user = requireUser(req, res);
@@ -1106,18 +1108,18 @@ async function handleReviewApplication(req, res, id) {
     `).run(approving ? "approved" : "rejected", note || null, admin.id, nowIso(), application.id);
 
     if (approving) {
-      // Grant the Hatcher role without dropping an existing Client role.
-      db.prepare("UPDATE users SET role = CASE WHEN role = 'Client' THEN 'Client and Hatcher' ELSE role END WHERE id = ?")
+      // Grant the Operator role without dropping an existing Client role.
+      db.prepare("UPDATE users SET role = CASE WHEN role = 'Client' THEN 'Client and Operator' ELSE role END WHERE id = ?")
         .run(application.user_id);
     }
 
     notify(application.user_id, {
       senderId: admin.id,
       kind: "admin",
-      subject: approving ? "Your Hatcher application was approved" : "Your Hatcher application was not approved",
+      subject: approving ? "Your Operator application was approved" : "Your Operator application was not approved",
       body: note || (approving
         ? "Welcome aboard! You can now claim Hatches from the Browse page."
-        : "Thanks for applying. You can update and resubmit your application from the Become a Hatcher page."),
+        : "Thanks for applying. You can update and resubmit your application from the Become an Operator page."),
     });
     return { application };
   });

@@ -22,7 +22,7 @@ db.exec(`
     username TEXT NOT NULL UNIQUE COLLATE NOCASE,
     email TEXT NOT NULL UNIQUE COLLATE NOCASE,
     name TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'Client and Hatcher',
+    role TEXT NOT NULL DEFAULT 'Client and Operator',
     password_hash TEXT NOT NULL,
     password_salt TEXT NOT NULL,
     joined_at TEXT NOT NULL

@@ -1,5 +1,5 @@
 window.SkillNestApp = (() => {
-  const { tasks, operators, clients, completedHatches, hatcherProfiles } = window.SkillNestData;
+  const { tasks, operators, clients, completedHatches, operatorProfiles } = window.SkillNestData;
   const C = window.SkillNestComponents;
   const Pages = window.SkillNestPages;
   let voiceRecognition = null;
@@ -231,7 +231,7 @@ window.SkillNestApp = (() => {
   }
 
   // ── Backend client ─────────────────────────────────────────────────────────
-  // The sync backend (hatchApi.js) holds accounts, hatcher applications, and
+  // The sync backend (hatchApi.js) holds accounts, operator applications, and
   // inboxes in SQLite. localStorage stays as the offline fallback: every call
   // here degrades to null so callers can keep the local behavior when the
   // server is down or the account never got a backend session.
@@ -300,8 +300,11 @@ window.SkillNestApp = (() => {
 
   function getAccount() {
     const account = readJson("skillnestAccount", {});
-    if (account.role === "AI Builder") return { ...account, role: "Hatcher" };
-    if (account.role === "Client and AI Builder") return { ...account, role: "Client and Hatcher" };
+    // Normalize legacy role labels to the current "Operator" wording so older
+    // stored accounts (and backend rows) display and route correctly. "Hatcher"
+    // was the previous term; "AI Builder" the one before that.
+    if (account.role === "AI Builder" || account.role === "Hatcher") return { ...account, role: "Operator" };
+    if (account.role === "Client and AI Builder" || account.role === "Client and Hatcher") return { ...account, role: "Client and Operator" };
     return account;
   }
 
@@ -372,7 +375,7 @@ window.SkillNestApp = (() => {
       const industry = task.industry || task.category || "General";
       const category = task.category || industry;
       const rawObjective = task.objective || task.description || task.summary || "";
-      const genericObjective = /ready for a hatcher to review|clear hatch brief/i.test(rawObjective);
+      const genericObjective = /ready for an operator to review|clear hatch brief/i.test(rawObjective);
       const fallbackObjective = C.generateTaskBrief(`${task.title || ""} ${industry} ${category}`, task.files || []).summary || "Create a clear, usable result for the client.";
       return {
         ...task,
@@ -493,11 +496,11 @@ window.SkillNestApp = (() => {
     return brief;
   }
 
-  // What to personalize the Hatcher recommendations around: the industry of
+  // What to personalize the Operator recommendations around: the industry of
   // whatever project the visitor is currently working on, falling back to
   // their most recently posted Hatch. Empty when neither exists — the
   // recommendation algorithm still ranks by quality, just without a match boost.
-  function hatcherRecommendationContext() {
+  function operatorRecommendationContext() {
     const brief = getGeneratedBrief();
     if (brief?.industry && brief.industry !== "General business") return { industry: brief.industry };
     const [latestPosted] = getPostedTasks();
@@ -853,7 +856,7 @@ window.SkillNestApp = (() => {
       constraints: [],
       references: [],
       missingInfo: ["project request"],
-      recommendedHatcherType: "",
+      recommendedOperatorType: "",
       summary: "",
       assistantMessage: "I’m not quite sure what you want done yet. Tell me the task, who it is for, and what result you want.",
       nextQuestion: {
@@ -888,7 +891,7 @@ window.SkillNestApp = (() => {
       constraints: [],
       references: [],
       missingInfo: ["Project", "Goal", "Business", "Deliverables"],
-      recommendedHatcherType: "",
+      recommendedOperatorType: "",
       summary: "",
       assistantMessage: "I’m reading through your project...",
       nextQuestion: { key: "none", prompt: "", suggestions: [], placeholder: "" },
@@ -902,7 +905,7 @@ window.SkillNestApp = (() => {
 
   function accountRoute(account = getAccount()) {
     if (account.role === "Operator" || account.role === "AI Builder" || account.role === "Hatcher") return "operator";
-    if (account.role === "Client and operator" || account.role === "Client and AI Builder" || account.role === "Client and Hatcher") return "profile";
+    if (account.role === "Client and Operator" || account.role === "Client and operator" || account.role === "Client and AI Builder" || account.role === "Client and Hatcher") return "profile";
     return "create-hatch";
   }
 
@@ -1217,9 +1220,9 @@ window.SkillNestApp = (() => {
     const qualityCheck = response.quality_check && typeof response.quality_check === "object"
       ? response.quality_check
       : previous.qualityCheck || {};
-    const hatcherQuestions = Array.isArray(response.hatcher_questions)
-      ? response.hatcher_questions.filter(Boolean).slice(0, 4)
-      : previous.hatcherQuestions || [];
+    const operatorQuestions = Array.isArray(response.operator_questions)
+      ? response.operator_questions.filter(Boolean).slice(0, 4)
+      : previous.operatorQuestions || [];
     const responseActiveSection = sectionIdFromUpdateKey(response.active_section || response.section_id || response.next_section || missingFields[0] || "general");
     const responseExpectedType = response.expected_answer_type
       || assistantKeyForSection(responseActiveSection)
@@ -1248,7 +1251,7 @@ window.SkillNestApp = (() => {
       audience: shouldUpdateBrief ? sectionUpdates.audience || rawBrief.audience || previous.audience || "" : previous.audience,
       industry: shouldUpdateBrief ? sectionUpdates.industry || rawBrief.industry || sourceFallback.industry || previous.industry || rawBrief.business_type || "" : previous.industry,
       category: shouldUpdateBrief ? richUpdates.category || response.task_type || rawBrief.category || sourceFallback.category || previous.category || "General" : previous.category,
-      suggestedLevel: shouldUpdateBrief ? richUpdates.recommended_hatcher_level || richUpdates.recommendedLevel || rawBrief.operator_level || sourceFallback.suggestedLevel || previous.suggestedLevel || "L1" : previous.suggestedLevel,
+      suggestedLevel: shouldUpdateBrief ? richUpdates.recommended_operator_level || richUpdates.recommendedLevel || rawBrief.operator_level || sourceFallback.suggestedLevel || previous.suggestedLevel || "L1" : previous.suggestedLevel,
       suggestedBudget: shouldUpdateBrief ? safeBudgetCandidate || previous.suggestedBudget || "" : previous.suggestedBudget,
       suggestedTimeline: shouldUpdateBrief ? safeTimelineCandidate || previous.suggestedTimeline || "" : previous.suggestedTimeline,
       budgetKnown: shouldUpdateBrief ? Boolean(safeBudgetCandidate || previous.budgetKnown) : previous.budgetKnown,
@@ -1259,7 +1262,7 @@ window.SkillNestApp = (() => {
       constraints: shouldUpdateBrief ? Array.isArray(sectionUpdates.constraints) && sectionUpdates.constraints.length ? sectionUpdates.constraints : constraints.length ? constraints : previous.constraints || [] : previous.constraints || [],
       references: shouldUpdateBrief ? sectionUpdates.references ? [sectionUpdates.references].flat().filter(Boolean) : references.length ? references : previous.references || [] : previous.references || [],
       missingInfo: missingFields,
-      recommendedHatcherType: (richUpdates.recommended_hatcher_level || rawBrief.operator_level) ? `${richUpdates.recommended_hatcher_level || rawBrief.operator_level} Hatcher` : previous.recommendedHatcherType || "",
+      recommendedOperatorType: (richUpdates.recommended_operator_level || rawBrief.operator_level) ? `${richUpdates.recommended_operator_level || rawBrief.operator_level} Operator` : previous.recommendedOperatorType || "",
       summary: sectionUpdates.goal || rawBrief.goal || sourceFallback.summary || previous.summary || "",
       assistantMessage: response.assistant_message || response.assistantMessage || C.fallbackAssistantMessage(previous),
       fieldsUpdated,
@@ -1267,7 +1270,7 @@ window.SkillNestApp = (() => {
       remainingUncertainties,
       understandingSummary,
       qualityCheck,
-      hatcherQuestions,
+      operatorQuestions,
       activeSection: responseActiveSection,
       activeQuestion: response.nextQuestion || nextQuestionText || "",
       expectedAnswerType: responseExpectedType || "general",
@@ -1748,8 +1751,8 @@ window.SkillNestApp = (() => {
       const message = category === "Content"
         ? "For content work, this week makes sense if it’s just captions or a small batch. If you want a full calendar with visuals, this month is safer."
         : level === "L3" || level === "L4"
-          ? "For this level of work, I’d usually give it one to two weeks so the Hatcher has room to test and refine it."
-          : "For a simple Hatch, this week is reasonable. If you’re not in a rush, flexible gives Hatchers more room to do it well.";
+          ? "For this level of work, I’d usually give it one to two weeks so the Operator has room to test and refine it."
+          : "For a simple Hatch, this week is reasonable. If you’re not in a rush, flexible gives Operators more room to do it well.";
       return {
         message: `${message} Which should I put down?`,
         question: {
@@ -1765,7 +1768,7 @@ window.SkillNestApp = (() => {
         ? "For an L1 Hatch, I’d start around $50-150. If you want more polish or several versions, $150-300 gives more room."
         : level === "L2"
           ? "For this kind of Hatch, $150-500 is a realistic range depending on how much detail you want."
-          : "For a more technical Hatch, I’d expect at least $500 so the Hatcher can build and test it properly.";
+          : "For a more technical Hatch, I’d expect at least $500 so the Operator can build and test it properly.";
       return {
         message: `${message} Which range should I use for now?`,
         question: {
@@ -1887,7 +1890,7 @@ window.SkillNestApp = (() => {
     if (key === "deliverables") {
       return {
         key: "deliverables",
-        prompt: "What should the Hatcher deliver?",
+        prompt: "What should the Operator deliver?",
         suggestions: ["Captions", "Visuals", "Posting plan", "All three"],
         placeholder: "Type the expected output",
       };
@@ -1925,7 +1928,7 @@ window.SkillNestApp = (() => {
     if (text.includes("menu") || text.includes("restaurant") || text.includes("cafe") || text.includes("instagram")) {
       return {
         key: "references",
-        prompt: "To make this accurate, the Hatcher needs the menu or food details. Can you provide a menu photo/link, item list with prices, or examples of your current style?",
+        prompt: "To make this accurate, the Operator needs the menu or food details. Can you provide a menu photo/link, item list with prices, or examples of your current style?",
         suggestions: ["I can attach a menu", "I can paste food items", "No menu yet", "Use best judgment"],
         placeholder: "Paste menu items, prices, links, or notes",
       };
@@ -1933,7 +1936,7 @@ window.SkillNestApp = (() => {
     if (text.includes("website") || text.includes("salon") || text.includes("booking")) {
       return {
         key: "references",
-        prompt: "For this website Hatch, the Hatcher needs the services, prices, photos, and any booking link. What can you provide?",
+        prompt: "For this website Hatch, the Operator needs the services, prices, photos, and any booking link. What can you provide?",
         suggestions: ["Services and prices", "Photos/logo", "Existing website", "No materials yet"],
         placeholder: "Paste services, prices, links, or notes",
       };
@@ -1941,7 +1944,7 @@ window.SkillNestApp = (() => {
     if (text.includes("product") || text.includes("shopify") || text.includes("e-commerce") || text.includes("ecommerce")) {
       return {
         key: "references",
-        prompt: "For product work, the Hatcher needs product names, current descriptions, photos, or a store link. What source material do you have?",
+        prompt: "For product work, the Operator needs product names, current descriptions, photos, or a store link. What source material do you have?",
         suggestions: ["Product list", "Store link", "Current descriptions", "No materials yet"],
         placeholder: "Paste product details, links, or notes",
       };
@@ -1949,7 +1952,7 @@ window.SkillNestApp = (() => {
     if (text.includes("faq") || text.includes("chatbot") || text.includes("support") || text.includes("reply")) {
       return {
         key: "references",
-        prompt: "For customer replies, the Hatcher needs your FAQ, policies, common questions, or examples of your tone. What can you share?",
+        prompt: "For customer replies, the Operator needs your FAQ, policies, common questions, or examples of your tone. What can you share?",
         suggestions: ["FAQ/policies", "Common questions", "Tone examples", "No materials yet"],
         placeholder: "Paste FAQ, policies, questions, or notes",
       };
@@ -1957,14 +1960,14 @@ window.SkillNestApp = (() => {
     if (text.includes("sheet") || text.includes("workflow") || text.includes("automation") || text.includes("forms")) {
       return {
         key: "references",
-        prompt: "For operations work, the Hatcher needs the current process, sample sheet, form, or steps you repeat. What can you provide?",
+        prompt: "For operations work, the Operator needs the current process, sample sheet, form, or steps you repeat. What can you provide?",
         suggestions: ["Current process", "Sample sheet", "Form link", "No materials yet"],
         placeholder: "Paste process notes, sheet/form links, or examples",
       };
     }
     return {
       key: "references",
-      prompt: "What source material should the Hatcher use: files, examples, links, notes, or existing content?",
+      prompt: "What source material should the Operator use: files, examples, links, notes, or existing content?",
       suggestions: ["I have files", "I have links", "No materials yet"],
       placeholder: "Paste a link, note, or source material",
     };
@@ -1983,7 +1986,7 @@ window.SkillNestApp = (() => {
     if (key === "constraints") {
       return {
         key: "constraints",
-        prompt: "Anything the Hatcher should avoid or keep in mind?",
+        prompt: "Anything the Operator should avoid or keep in mind?",
         suggestions: ["None for now"],
         placeholder: "Type constraints or say none",
       };
@@ -2427,7 +2430,7 @@ window.SkillNestApp = (() => {
       nextBrief.industry = answer === "Other" ? "To be confirmed" : answer;
       nextBrief.summary = answer === "Other"
         ? brief.summary
-        : `A practical ${answer.toLowerCase()} project ready for a Hatcher to review.`;
+        : `A practical ${answer.toLowerCase()} project ready for an Operator to review.`;
       nextBrief.missingInfo = removeMissingInfo(nextBrief, "industry");
       nextBrief.assistantMessage = "That gives me a much clearer picture. I’ve updated the business context.";
     }
@@ -3252,7 +3255,7 @@ window.SkillNestApp = (() => {
   function useExampleTask() {
     const prompt = document.getElementById("taskPrompt");
     if (!prompt) return;
-    const exampleText = "I run a small cafe and need a Hatcher to turn my menu and daily specials into 30 Instagram captions, a simple posting calendar, and a few Canva template ideas.";
+    const exampleText = "I run a small cafe and need an Operator to turn my menu and daily specials into 30 Instagram captions, a simple posting calendar, and a few Canva template ideas.";
     prompt.value = prompt.value.trim() ? `${prompt.value.trim()}\n\n${exampleText}` : exampleText;
     const summary = document.getElementById("fileSummary");
     if (summary) {
@@ -3542,7 +3545,7 @@ window.SkillNestApp = (() => {
       references: brief.references || [],
       constraints: brief.constraints || [],
       missingInfo: brief.missingInfo || [],
-      recommendedHatcherType: brief.recommendedHatcherType || brief.suggestedLevel || "L1",
+      recommendedOperatorType: brief.recommendedOperatorType || brief.suggestedLevel || "L1",
       files,
       createdAt: new Date().toISOString(),
     };
@@ -3560,7 +3563,7 @@ window.SkillNestApp = (() => {
     const timeline = String(brief.suggestedTimeline || "").trim();
 
     if (!title || genericTitles.has(title.toLowerCase()) || title.length < 12) issues.push("specific title");
-    if (!objective || /practical hatch|practical project|usable result|ready for a hatcher/i.test(objective) || objective.length < 30) issues.push("useful objective");
+    if (!objective || /practical hatch|practical project|usable result|ready for an operator/i.test(objective) || objective.length < 30) issues.push("useful objective");
     if (!business || /general business|to be confirmed|client$/i.test(business)) issues.push("clear business context");
     if (deliverables.length < 2 || deliverables.some((item) => /first usable version|clear delivery notes|editable final files/i.test(item))) issues.push("concrete deliverables");
     if (scope.length < 2 || scope.some((item) => /review (the )?client brief|organize work|prepare final handoff notes/i.test(item))) issues.push("task-specific scope");
@@ -3572,7 +3575,7 @@ window.SkillNestApp = (() => {
   function qualityGateMessage(issues = []) {
     const first = issues[0] || "one more detail";
     const labels = {
-      "specific title": "what exactly the Hatcher should deliver",
+      "specific title": "what exactly the Operator should deliver",
       "useful objective": "the outcome you want",
       "clear business context": "who this is for",
       "concrete deliverables": "what should be handed back",
@@ -3580,7 +3583,7 @@ window.SkillNestApp = (() => {
       budget: "the rough budget",
       timeline: "the timeline",
     };
-    return `I want this Hatch to be clear enough for a Hatcher to start without guessing. The next thing I need is ${labels[first] || first}.`;
+    return `I want this Hatch to be clear enough for an Operator to start without guessing. The next thing I need is ${labels[first] || first}.`;
   }
 
   function submitReviewedHatch() {
@@ -3741,7 +3744,7 @@ window.SkillNestApp = (() => {
     if (pendingMessageTo) {
       localStorage.removeItem("hatchPendingMessageTo");
       setRoute(accountRoute(account));
-      window.setTimeout(() => messageHatcher(pendingMessageTo), 60);
+      window.setTimeout(() => messageOperator(pendingMessageTo), 60);
       return;
     }
     if (completePendingMission()) return;
@@ -3841,11 +3844,11 @@ window.SkillNestApp = (() => {
 
   async function quickTestLogin() {
     const account = {
-      username: "test_hatcher",
-      name: "Test Hatcher",
+      username: "test_operator",
+      name: "Test Operator",
       email: "test@hatch.local",
       password: "test",
-      role: "Client and Hatcher",
+      role: "Client and Operator",
       provider: "Quick test login",
       joinedAt: new Date().toISOString(),
     };
@@ -4032,16 +4035,16 @@ window.SkillNestApp = (() => {
     applyTaskFilters();
   }
 
-  // Same search/filter/sort shape as applyTaskFilters, over the Hatcher
+  // Same search/filter/sort shape as applyTaskFilters, over the Operator
   // directory grid instead of the Hatch grid.
-  function applyHatcherFilters() {
-    const query = (document.getElementById("hatcherSearch")?.value || "").toLowerCase();
-    const levels = [...document.querySelectorAll(".hatcher-level-check:checked")].map((el) => el.value);
-    const industry = document.getElementById("hatcherIndustryFilter")?.value || "";
-    const sort = document.getElementById("hatcherSortFilter")?.value || "";
-    const grid = document.getElementById("hatcherDirectoryGrid");
+  function applyOperatorFilters() {
+    const query = (document.getElementById("operatorSearch")?.value || "").toLowerCase();
+    const levels = [...document.querySelectorAll(".operator-level-check:checked")].map((el) => el.value);
+    const industry = document.getElementById("operatorIndustryFilter")?.value || "";
+    const sort = document.getElementById("operatorSortFilter")?.value || "";
+    const grid = document.getElementById("operatorDirectoryGrid");
     if (!grid) return;
-    const cards = [...grid.querySelectorAll(".hatcher-row-card")];
+    const cards = [...grid.querySelectorAll(".operator-row-card")];
 
     cards.forEach((card, index) => {
       if (card.dataset.order === undefined) card.dataset.order = String(index);
@@ -4050,7 +4053,7 @@ window.SkillNestApp = (() => {
     // Rating/completed/on-time/recommended sort high-to-low (best first);
     // level sorts low-to-high (L1 before L3), matching the Hatch level sort.
     // "Recommended" (the default, empty sort value) ranks by the blended
-    // match score stamped on each card by hatcherMatchScore().
+    // match score stamped on each card by operatorMatchScore().
     const sortKey = { rating: "rating", completed: "completed", ontime: "ontime", level: "levelNum" }[sort] || "score";
     const descending = sort !== "level";
     const sortValue = (card) => Number(card.dataset[sortKey]);
@@ -4070,27 +4073,27 @@ window.SkillNestApp = (() => {
       if (isVisible) visibleCount += 1;
     });
 
-    document.getElementById("emptyHatchers")?.classList.toggle("show", visibleCount === 0);
-    const hint = document.getElementById("hatcherResultHint");
-    if (hint) hint.textContent = `${visibleCount} ${visibleCount === 1 ? "Hatcher" : "Hatchers"}`;
+    document.getElementById("emptyOperators")?.classList.toggle("show", visibleCount === 0);
+    const hint = document.getElementById("operatorResultHint");
+    if (hint) hint.textContent = `${visibleCount} ${visibleCount === 1 ? "Operator" : "Operators"}`;
   }
 
-  function resetHatcherFilters() {
-    const search = document.getElementById("hatcherSearch");
+  function resetOperatorFilters() {
+    const search = document.getElementById("operatorSearch");
     if (search) search.value = "";
-    const industry = document.getElementById("hatcherIndustryFilter");
+    const industry = document.getElementById("operatorIndustryFilter");
     if (industry) industry.value = "";
-    const sort = document.getElementById("hatcherSortFilter");
+    const sort = document.getElementById("operatorSortFilter");
     if (sort) sort.value = "";
-    document.querySelectorAll(".hatcher-level-check:checked").forEach((el) => { el.checked = false; });
-    applyHatcherFilters();
+    document.querySelectorAll(".operator-level-check:checked").forEach((el) => { el.checked = false; });
+    applyOperatorFilters();
   }
 
-  // Login-gated compose entry point for the Hatcher directory: the row card's
+  // Login-gated compose entry point for the Operator directory: the row card's
   // quick "Message" button and the expanded profile modal both funnel here. A
   // logged-out visitor is sent to auth first (mirroring submitReviewedHatch's
   // pending-action pattern) instead of hitting a doomed 401.
-  function messageHatcher(operatorId) {
+  function messageOperator(operatorId) {
     if (!isLoggedIn() || !backendToken()) {
       localStorage.setItem("hatchPendingMessageTo", operatorId);
       setRoute("auth");
@@ -4100,9 +4103,9 @@ window.SkillNestApp = (() => {
   }
 
   // ── Clients directory ────────────────────────────────────────────────────
-  // Mirror of the Hatcher directory helpers above, keyed off the client-*
+  // Mirror of the Operator directory helpers above, keyed off the client-*
   // element ids/classes rendered by findClientsPage. The card visual classes
-  // are shared with the Hatcher grid (hatcher-row-card), so only the interactive
+  // are shared with the Operator grid (operator-row-card), so only the interactive
   // hooks differ.
   function applyClientFilters() {
     const query = (document.getElementById("clientSearch")?.value || "").toLowerCase();
@@ -4111,7 +4114,7 @@ window.SkillNestApp = (() => {
     const sort = document.getElementById("clientSortFilter")?.value || "";
     const grid = document.getElementById("clientDirectoryGrid");
     if (!grid) return;
-    const cards = [...grid.querySelectorAll(".hatcher-row-card")];
+    const cards = [...grid.querySelectorAll(".operator-row-card")];
 
     cards.forEach((card, index) => {
       if (card.dataset.order === undefined) card.dataset.order = String(index);
@@ -4167,9 +4170,9 @@ window.SkillNestApp = (() => {
     if (client) openModal(C.clientDetail(client));
   }
 
-  // No task context to match against when a Hatcher browses clients (that
+  // No task context to match against when an Operator browses clients (that
   // matching runs the other direction), so the recommended row just falls
-  // back to top-rated. Kept as a seam mirroring hatcherRecommendationContext.
+  // back to top-rated. Kept as a seam mirroring operatorRecommendationContext.
   function clientRecommendationContext() {
     return {};
   }
@@ -4185,7 +4188,7 @@ window.SkillNestApp = (() => {
     if (C.statusInfo(task.status).label === "Hatched") return;
 
     // Applying to a Hatch (Incubating) claims it on the backend when possible so
-    // the deliverable the Hatcher submits later actually reaches the poster. If
+    // the deliverable the Operator submits later actually reaches the poster. If
     // the task has no backendId (seed tasks) or the server is unreachable, the
     // mission is still saved locally and the demo flow keeps working.
     let backendId = task.backendId || null;
@@ -4209,7 +4212,7 @@ window.SkillNestApp = (() => {
     updateTaskCardState(taskId, status);
     const feedback = document.getElementById("taskFeedback");
     if (feedback) {
-      feedback.textContent = applying ? "Hatch added to your Hatcher Hatches." : "Hatch saved to your profile.";
+      feedback.textContent = applying ? "Hatch added to your Operator Hatches." : "Hatch saved to your profile.";
       feedback.classList.add("show");
     }
   }
@@ -4226,7 +4229,7 @@ window.SkillNestApp = (() => {
     localStorage.setItem(
       "hatchProfileNotice",
       status === "Incubating" || status === "Accepted"
-        ? "Hatch added to your Hatcher Hatches."
+        ? "Hatch added to your Operator Hatches."
         : "Hatch saved to your profile."
     );
     setRoute("profile");
@@ -4258,8 +4261,8 @@ window.SkillNestApp = (() => {
     render();
   }
 
-  // --- Work submission (Hatcher) and review (poster) ---------------------
-  // The Hatcher describes the deliverable, optionally attaching files and
+  // --- Work submission (Operator) and review (poster) ---------------------
+  // The Operator describes the deliverable, optionally attaching files and
   // links, and submits it for the poster to review. Submissions are sent to
   // the backend when the mission was claimed there (so the poster is notified
   // and can approve/reject from any session); a local copy is always kept so
@@ -4440,7 +4443,7 @@ window.SkillNestApp = (() => {
       "id"
     );
 
-    // Local bridge back to the Hatcher's copy so their mission reflects the
+    // Local bridge back to the Operator's copy so their mission reflects the
     // decision (Hatched on approve, back to Incubating to revise on reject).
     // Only matches when the same account is testing both sides (see submitWork).
     const missions = getMissions();
@@ -4456,7 +4459,7 @@ window.SkillNestApp = (() => {
       ? (publishToVerified
         ? "Submission approved. This Hatch is now Hatched and published to Verified Results."
         : "Submission approved. This Hatch is now Hatched.")
-      : "Changes requested. The Hatcher has been asked to revise.");
+      : "Changes requested. The Operator has been asked to revise.");
     closeModal();
     refreshConversations();
     render();
@@ -4469,14 +4472,14 @@ window.SkillNestApp = (() => {
   }
 
   // Turns an approved task + its submission into a Verified Results record so
-  // visitors can see the project and exactly what the Hatcher handed in. Shaped
+  // visitors can see the project and exactly what the Operator handed in. Shaped
   // to render through the same verifiedWorkCard / verifiedProjectDetail as the
-  // seed data, but carries a plain hatcherName (no seeded profile) plus the
+  // seed data, but carries a plain operatorName (no seeded profile) plus the
   // delivered submission (message + attachments).
   function publishVerifiedResult(task, submission) {
     const account = getAccount();
-    const hatcherName = account.name || account.username || "Hatcher";
-    const initials = hatcherName
+    const operatorName = account.name || account.username || "Operator";
+    const initials = operatorName
       .split(/\s+/)
       .map((word) => word[0])
       .join("")
@@ -4500,10 +4503,10 @@ window.SkillNestApp = (() => {
       outcome: submission?.message || "Delivered work approved by the client.",
       completedAt: new Date().toISOString().slice(0, 10),
       verifiedBadges: ["Client accepted", "Completed"],
-      hatcherId: null,
-      hatcherName,
-      hatcherInitials: initials,
-      hatcherMeta: `${level} · ${industry}`,
+      operatorId: null,
+      operatorName,
+      operatorInitials: initials,
+      operatorMeta: `${level} · ${industry}`,
       showProfile: true,
       showEarnings: Boolean(task.budget),
       showCompletionTime: true,
@@ -4567,7 +4570,7 @@ window.SkillNestApp = (() => {
   // Rebuilds the wizard draft from a submitted application and jumps straight
   // into it — so "Update application" resumes with everything pre-filled
   // instead of starting a blank re-application.
-  function updateHatcherApplication() {
+  function updateOperatorApplication() {
     const account = getAccount();
     const application = getOperatorApplications()[0];
     const splitList = (value) => String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
@@ -4619,13 +4622,13 @@ window.SkillNestApp = (() => {
     render();
   }
 
-  // Selecting "Become a Hatcher" makes you a Hatcher — so normalize any prior
-  // role up to include Hatcher rather than dropping into an application flow.
-  function hatcherRoleFor(role) {
-    if (!role) return "Hatcher";
-    if (role.includes("Hatcher")) return role;
-    if (role.includes("Client")) return "Client and Hatcher";
-    return "Hatcher";
+  // Selecting "Become an Operator" makes you an Operator — so normalize any prior
+  // role up to include Operator rather than dropping into an application flow.
+  function operatorRoleFor(role) {
+    if (!role) return "Operator";
+    if (role.includes("Operator")) return role;
+    if (role.includes("Client")) return "Client and Operator";
+    return "Operator";
   }
 
   function operatorAccountStep(event) {
@@ -4639,40 +4642,40 @@ window.SkillNestApp = (() => {
       name: sameEmail ? existing.name || "" : "",
       email,
       password,
-      role: hatcherRoleFor(sameEmail ? existing.role : ""),
+      role: operatorRoleFor(sameEmail ? existing.role : ""),
       provider: "Email",
       joinedAt: sameEmail && existing.joinedAt ? existing.joinedAt : new Date().toISOString(),
     };
     localStorage.setItem("skillnestAccount", JSON.stringify(account));
     localStorage.setItem("skillnestLoggedIn", "true");
-    // Instant Hatcher — no application step. Land straight on the profile.
+    // Instant Operator — no application step. Land straight on the profile.
     finishOperatorWizard("profile");
   }
 
   function operatorGoogleSignup() {
     const existing = getAccount();
     const account = existing.email
-      ? { ...existing, role: hatcherRoleFor(existing.role), provider: "Google (simulated)" }
+      ? { ...existing, role: operatorRoleFor(existing.role), provider: "Google (simulated)" }
       : {
-        username: "google_hatcher",
+        username: "google_operator",
         name: "",
-        email: "hatcher@gmail.com",
+        email: "operator@gmail.com",
         password: "",
-        role: "Hatcher",
+        role: "Operator",
         provider: "Google (simulated)",
         joinedAt: new Date().toISOString(),
       };
     localStorage.setItem("skillnestAccount", JSON.stringify(account));
     localStorage.setItem("skillnestLoggedIn", "true");
-    // Instant Hatcher — no application step. Land straight on the profile.
+    // Instant Operator — no application step. Land straight on the profile.
     finishOperatorWizard("profile");
   }
 
   function operatorContinueLoggedIn() {
-    // Already signed in — just make sure the account carries the Hatcher role,
+    // Already signed in — just make sure the account carries the Operator role,
     // then land on the profile. No application step.
     const account = getAccount();
-    const role = hatcherRoleFor(account.role);
+    const role = operatorRoleFor(account.role);
     if (role !== account.role) {
       localStorage.setItem("skillnestAccount", JSON.stringify({ ...account, role }));
     }
@@ -4994,7 +4997,7 @@ window.SkillNestApp = (() => {
     openNewMessage(task.createdByUsername, task.backendId, task.title || "");
   }
 
-  // "Message client / Message Hatcher" on profile rows: the server resolves
+  // "Message client / Message Operator" on profile rows: the server resolves
   // the other party from the hatch, so no local knowledge of who claimed it
   // is needed.
   function openNewMessageForHatch(backendId) {
@@ -5212,7 +5215,7 @@ window.SkillNestApp = (() => {
   // the post-a-Hatch flow.
   const BANNER_ROUTES = new Set([
     "home", "how-it-works", "about", "verified-work", "operator",
-    "browse", "hatchers", "clients",
+    "browse", "operators", "clients",
     "auth", "signup",
   ]);
 
@@ -5415,9 +5418,9 @@ window.SkillNestApp = (() => {
     if (work) openModal(C.verifiedProjectDetail(work));
   }
 
-  function openVerifiedHatcherProfile(profileId) {
-    const profile = hatcherProfiles.find((item) => item.id === profileId);
-    if (profile) openModal(C.verifiedHatcherProfile(profile));
+  function openVerifiedOperatorProfile(profileId) {
+    const profile = operatorProfiles.find((item) => item.id === profileId);
+    if (profile) openModal(C.verifiedOperatorProfile(profile));
   }
 
   function shareToast(message) {
@@ -5525,8 +5528,8 @@ window.SkillNestApp = (() => {
         ? Pages.aboutPage()
       : route === "browse"
         ? Pages.browsePage(browsableTasks())
-      : route === "hatchers"
-        ? Pages.findHatchersPage(operators, hatcherRecommendationContext())
+      : route === "operators"
+        ? Pages.findOperatorsPage(operators, operatorRecommendationContext())
       : route === "clients"
         ? Pages.findClientsPage(clients, clientRecommendationContext())
       : route === "terms"
@@ -5601,7 +5604,7 @@ window.SkillNestApp = (() => {
       // Filters first, so hydration knows which cards are actually on screen
       // and skips paying to translate ones the reader filtered away.
       if (route === "browse") applyTaskFilters();
-      if (route === "hatchers") applyHatcherFilters();
+      if (route === "operators") applyOperatorFilters();
       if (route === "clients") applyClientFilters();
       hydrateTaskTranslations();
       if (route === "messages") {
@@ -5618,13 +5621,13 @@ window.SkillNestApp = (() => {
   return {
     applyDarkModePreference,
     applyTaskFilters,
-    applyHatcherFilters,
+    applyOperatorFilters,
     applyClientFilters,
     handleRangeInput,
     resetTaskFilters,
-    resetHatcherFilters,
+    resetOperatorFilters,
     resetClientFilters,
-    messageHatcher,
+    messageOperator,
     messageClient,
     openClientProfile,
     answerClarification,
@@ -5655,13 +5658,13 @@ window.SkillNestApp = (() => {
     operatorGoogleSignup,
     operatorStepBack,
     operatorStepNext,
-    updateHatcherApplication,
+    updateOperatorApplication,
     attachResume,
     removeResume,
     openHatchReview,
     openOperatorProfile,
     openTaskDetail,
-    openVerifiedHatcherProfile,
+    openVerifiedOperatorProfile,
     openVerifiedProject,
     pauseVoiceInput,
     previewDraftFile,

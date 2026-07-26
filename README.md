@@ -1,6 +1,6 @@
 # Hatch
 
-Hatch is an AI-assisted marketplace prototype where clients describe work naturally and Hatch turns it into a clear project brief before posting it as a Hatch for Hatchers to review.
+Hatch is an AI-assisted marketplace prototype where clients describe work naturally and Hatch turns it into a clear project brief before posting it as a Hatch for Operators to review.
 
 ## Technology Stack
 
@@ -73,7 +73,7 @@ Hatch lifecycle (states: `open → claimed → in_progress → submitted → com
 - `POST /api/hatches` — create (client). Accepts the same field names the frontend uses (`title`, `objective`, `budget`, `deliverables`, ...).
 - `GET /api/hatches` — list; `?state=open` is the default, `?state=all` for everything, `?mine=created|claimed` with auth.
 - `GET /api/hatches/:id` — detail with the event timeline; participants also see submissions.
-- `POST /api/hatches/:id/claim` — Hatcher claims. Race-safe: exactly one simultaneous claimer wins.
+- `POST /api/hatches/:id/claim` — Operator claims. Race-safe: exactly one simultaneous claimer wins.
 - `POST /api/hatches/:id/start` — claimed → in_progress (claimer only).
 - `POST /api/hatches/:id/submit` — `{message, attachments?}` deliverable (claimer only).
 - `POST /api/hatches/:id/review` — `{decision: "approve"|"reject", feedback?}` (creator only). Approve completes the hatch; reject sends it back to in_progress.
@@ -82,7 +82,7 @@ Hatch lifecycle (states: `open → claimed → in_progress → submitted → com
 Messaging (LinkedIn-style inbox at `#messages`; conversations are `direct` between two users or `system` — one-way updates from Hatch itself, e.g. "your Hatch was claimed"; hatch lifecycle events land in per-hatch system conversations automatically):
 
 - `GET /api/messages/conversations` — the caller's conversations with participants, last-message preview, per-thread and total unread counts.
-- `POST /api/messages/start` — `{body, to?, hatchId?}`; `to` is a username (email lookup is admin-only, to prevent email→identity mapping), or pass only `hatchId` and the server resolves the other party on that hatch (client ↔ Hatcher). A `hatchId` tag requires one side to be that hatch's client or Hatcher. Reuses the existing thread for the same pair + hatch.
+- `POST /api/messages/start` — `{body, to?, hatchId?}`; `to` is a username (email lookup is admin-only, to prevent email→identity mapping), or pass only `hatchId` and the server resolves the other party on that hatch (client ↔ Operator). A `hatchId` tag requires one side to be that hatch's client or Operator. Reuses the existing thread for the same pair + hatch.
 - `GET /api/messages/conversations/:id` — full thread (participants only).
 - `POST /api/messages/conversations/:id` — `{body}` send a message (not allowed into `system` threads).
 - `POST /api/messages/conversations/:id/read` — mark the thread's incoming messages read.

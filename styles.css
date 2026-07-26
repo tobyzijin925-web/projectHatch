@@ -428,7 +428,7 @@ a {
   font-weight: 700;
 }
 
-/* "Browse" nav dropdown: Hatches + Hatchers collapsed under one trigger, same
+/* "Browse" nav dropdown: Hatches + Operators collapsed under one trigger, same
    open/close mechanics as the footer language picker but opening downward
    since this lives in the top nav instead of the footer. */
 .nav-browse-dropdown {
@@ -1223,7 +1223,7 @@ html.dark-mode .typewriter-pill {
   align-items: center;
 }
 
-.verified-hatcher-link {
+.verified-operator-link {
   appearance: none;
   display: flex;
   align-items: center;
@@ -1236,16 +1236,16 @@ html.dark-mode .typewriter-pill {
   cursor: pointer;
 }
 
-.verified-hatcher-link:disabled {
+.verified-operator-link:disabled {
   cursor: default;
 }
 
-.verified-hatcher-link:not(:disabled):hover strong {
+.verified-operator-link:not(:disabled):hover strong {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
-.verified-hatcher-name {
+.verified-operator-name {
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -2187,15 +2187,15 @@ button.chip:hover {
   grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
 }
 
-/* Hatcher directory: two wide rows per line, photo on the left of each row,
+/* Operator directory: two wide rows per line, photo on the left of each row,
    details on the right — a person reads better as a row than a tall tile. */
-.hatcher-directory-grid {
+.operator-directory-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
 }
 
-.hatcher-row-card {
+.operator-row-card {
   display: flex;
   align-items: flex-start;
   gap: var(--space-4);
@@ -2208,42 +2208,42 @@ button.chip:hover {
   transition: transform 160ms ease, box-shadow 160ms ease;
 }
 
-.hatcher-row-card:hover {
+.operator-row-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 22px 54px rgba(16, 24, 40, 0.11);
 }
 
-.hatcher-row-avatar {
+.operator-row-avatar {
   flex-shrink: 0;
 }
 
-.hatcher-row-body {
+.operator-row-body {
   flex: 1;
   min-width: 0;
 }
 
-.hatcher-row-head {
+.operator-row-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
 }
 
-.hatcher-row-level {
+.operator-row-level {
   margin: 2px 0 0;
   color: var(--muted);
   font-size: 0.85rem;
   font-weight: 700;
 }
 
-.hatcher-row-bio {
+.operator-row-bio {
   margin: 8px 0 0;
   color: var(--text-soft);
   font-size: 0.88rem;
   line-height: 1.5;
 }
 
-.hatcher-message-btn {
+.operator-message-btn {
   flex-shrink: 0;
   white-space: nowrap;
 }
@@ -3286,7 +3286,7 @@ dd {
   background: rgba(var(--paper-rgb), 0.72);
 }
 
-.hatcher-questions-card ul {
+.operator-questions-card ul {
   display: grid;
   gap: 8px;
   margin: 0;
@@ -3294,7 +3294,7 @@ dd {
   color: var(--ink);
 }
 
-.hatcher-questions-card li {
+.operator-questions-card li {
   line-height: 1.35;
 }
 
@@ -5655,7 +5655,7 @@ html.dark-mode .btn.secondary:hover {
   .brief-editor-row,
   .brief-meta-grid,
   .detail-grid,
-  .hatcher-directory-grid {
+  .operator-directory-grid {
     grid-template-columns: 1fr;
   }
 
@@ -5664,13 +5664,13 @@ html.dark-mode .btn.secondary:hover {
     grid-template-columns: 1fr;
   }
 
-  .hatcher-row-card {
+  .operator-row-card {
     flex-direction: column;
     align-items: center;
     text-align: center;
   }
 
-  .hatcher-row-head {
+  .operator-row-head {
     flex-direction: column;
     align-items: center;
   }
@@ -5813,7 +5813,7 @@ html.dark-mode .btn.secondary:hover {
   justify-self: start;
 }
 
-/* ── Hatcher application: LinkedIn + resume ─────────────────────────── */
+/* ── Operator application: LinkedIn + resume ─────────────────────────── */
 
 .field-optional {
   font-weight: 600;

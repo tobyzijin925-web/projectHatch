@@ -152,7 +152,7 @@ window.HatchAIController = (() => {
         assistantMessage: "I’m not quite sure what you want done yet. Tell me the task, who it is for, and what result you want.",
         nextQuestion: {
           key: "project",
-          prompt: "What do you want a Hatcher to help with?",
+          prompt: "What do you want an Operator to help with?",
           suggestions: [],
           placeholder: "Describe the Hatch",
         },

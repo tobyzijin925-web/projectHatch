@@ -1,7 +1,7 @@
 // Hatch content translation
 //
 // Hatch listings are written by clients in their own language. When a browsing
-// Hatcher's content-language preference doesn't match, this module fetches a
+// Operator's content-language preference doesn't match, this module fetches a
 // machine translation from /api/translate and caches it, keyed by Hatch id +
 // target language + a hash of the source text. The hash means an edited Hatch
 // re-translates instead of serving a stale cached copy.

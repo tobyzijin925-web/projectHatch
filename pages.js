@@ -81,7 +81,7 @@ window.SkillNestPages = (() => {
           <div class="form-copy hatch-review-head">
             <span class="section-label">Final review</span>
             <h1>Review your Hatch.</h1>
-            <p>This is exactly what Hatchers will see. Check it once, then post it so they can take the work.</p>
+            <p>This is exactly what Operators will see. Check it once, then post it so they can take the work.</p>
           </div>
           <section class="review-card hatch-review-card">
             ${C.finalReviewMarkup(generatedBrief, files, [])}
@@ -233,57 +233,57 @@ window.SkillNestPages = (() => {
   }
 
   // Finding a person instead of a task: same browse-and-filter shape as
-  // browsePage, but the grid lays each Hatcher out as a wide row (photo left,
+  // browsePage, but the grid lays each Operator out as a wide row (photo left,
   // details right) two per row, rather than a task-style tile grid — a person
   // reads better as a row than a card.
-  function findHatchersPage(allOperators = operators, context = {}) {
-    const uniqueLevels = [...new Set(allOperators.map((op) => C.hatcherLevelBucket(op.level)).filter(Boolean))]
+  function findOperatorsPage(allOperators = operators, context = {}) {
+    const uniqueLevels = [...new Set(allOperators.map((op) => C.operatorLevelBucket(op.level)).filter(Boolean))]
       .sort((a, b) => C.levelSortValue(a) - C.levelSortValue(b));
     const industries = [...new Set(allOperators.flatMap((op) => op.industries || []))];
 
     return `
       <main>
-        <section class="section page" id="hatchers">
+        <section class="section page" id="operators">
           <div class="section-head compact-head">
             <div>
-              <div class="section-label">Find Hatchers</div>
-              <h2>Hatchers</h2>
-              <p class="section-kicker">Browse verified Hatchers and message the right one directly.</p>
+              <div class="section-label">Find Operators</div>
+              <h2>Operators</h2>
+              <p class="section-kicker">Browse verified Operators and message the right one directly.</p>
             </div>
           </div>
           ${C.recommendedOperators(context.industry || "", context.tools || [])}
           <div class="browse-layout">
-            <aside class="browse-sidebar" aria-label="Hatcher filters">
+            <aside class="browse-sidebar" aria-label="Operator filters">
               <div class="filter-group">
-                <label class="filter-heading" for="hatcherSearch">Search</label>
-                <input id="hatcherSearch" type="search" placeholder="Name, industry, or tool..." oninput="SkillNestApp.applyHatcherFilters()" />
+                <label class="filter-heading" for="operatorSearch">Search</label>
+                <input id="operatorSearch" type="search" placeholder="Name, industry, or tool..." oninput="SkillNestApp.applyOperatorFilters()" />
               </div>
               <div class="filter-group">
                 <div class="filter-heading">Level</div>
                 <div class="filter-options">
                   ${uniqueLevels.map((level) => `
                     <label class="filter-check">
-                      <input type="checkbox" class="hatcher-level-check" value="${C.escapeHtml(level)}" onchange="SkillNestApp.applyHatcherFilters()" />
+                      <input type="checkbox" class="operator-level-check" value="${C.escapeHtml(level)}" onchange="SkillNestApp.applyOperatorFilters()" />
                       <span>${C.escapeHtml(level)}</span>
                     </label>
                   `).join("")}
                 </div>
               </div>
               <div class="filter-group">
-                <label class="filter-heading" for="hatcherIndustryFilter">Industry</label>
-                <select id="hatcherIndustryFilter" onchange="SkillNestApp.applyHatcherFilters()">
+                <label class="filter-heading" for="operatorIndustryFilter">Industry</label>
+                <select id="operatorIndustryFilter" onchange="SkillNestApp.applyOperatorFilters()">
                   <option value="">All industries</option>
                   ${industries.map((industry) => `<option value="${C.escapeHtml(industry)}">${industry}</option>`).join("")}
                 </select>
               </div>
-              <button class="btn ghost small filter-reset" type="button" onclick="SkillNestApp.resetHatcherFilters()">Clear filters</button>
+              <button class="btn ghost small filter-reset" type="button" onclick="SkillNestApp.resetOperatorFilters()">Clear filters</button>
             </aside>
             <div class="browse-main">
               <div class="browse-toolbar">
-                <span class="result-hint" id="hatcherResultHint"></span>
+                <span class="result-hint" id="operatorResultHint"></span>
                 <label class="sort-control">
                   <span>Sort by</span>
-                  <select id="hatcherSortFilter" onchange="SkillNestApp.applyHatcherFilters()">
+                  <select id="operatorSortFilter" onchange="SkillNestApp.applyOperatorFilters()">
                     <option value="">Recommended</option>
                     <option value="rating">Rating: high to low</option>
                     <option value="completed">Most Hatched</option>
@@ -292,10 +292,10 @@ window.SkillNestPages = (() => {
                   </select>
                 </label>
               </div>
-              <div class="hatcher-directory-grid" id="hatcherDirectoryGrid">
-                ${allOperators.map((operator) => C.hatcherDirectoryCard(operator, context)).join("")}
+              <div class="operator-directory-grid" id="operatorDirectoryGrid">
+                ${allOperators.map((operator) => C.operatorDirectoryCard(operator, context)).join("")}
               </div>
-              <div class="empty-state" id="emptyHatchers">No Hatchers match those filters.</div>
+              <div class="empty-state" id="emptyOperators">No Operators match those filters.</div>
             </div>
           </div>
         </section>
@@ -303,9 +303,9 @@ window.SkillNestPages = (() => {
     `;
   }
 
-  // Browse clients: the mirror image of findHatchersPage — same browse-and-
+  // Browse clients: the mirror image of findOperatorsPage — same browse-and-
   // filter layout and the same wide-row directory grid, but listing the
-  // businesses posting Hatches so a Hatcher can find and contact the right one.
+  // businesses posting Hatches so an Operator can find and contact the right one.
   function findClientsPage(allClients = clients, context = {}) {
     const types = [...new Set(allClients.map((client) => client.type).filter(Boolean))];
     const industries = [...new Set(allClients.flatMap((client) => client.industries || []))];
@@ -360,7 +360,7 @@ window.SkillNestPages = (() => {
                   </select>
                 </label>
               </div>
-              <div class="hatcher-directory-grid" id="clientDirectoryGrid">
+              <div class="operator-directory-grid" id="clientDirectoryGrid">
                 ${allClients.map((client) => C.clientDirectoryCard(client, context)).join("")}
               </div>
               <div class="empty-state" id="emptyClients">No clients match those filters.</div>
@@ -475,7 +475,7 @@ window.SkillNestPages = (() => {
           <div class="form-copy">
             <div class="section-label">Create account</div>
             <h1>Set up your Hatch account.</h1>
-            <p>Clients post Hatches. Hatchers hatch them.</p>
+            <p>Clients post Hatches. Operators hatch them.</p>
           </div>
           <form class="form-card auth-card" onsubmit="SkillNestApp.completeSignup(event)">
             ${socialAuthButtons()}
@@ -485,7 +485,7 @@ window.SkillNestPages = (() => {
               ${C.field("Full name", "authName", "Your name")}
               ${C.field("Email", "authEmail", "you@example.com", "email")}
               ${C.field("Password", "authPassword", "Create a password", "password")}
-              ${C.selectField("I am joining as", "authRole", ["Client", "Hatcher", "Client and Hatcher"])}
+              ${C.selectField("I am joining as", "authRole", ["Client", "Operator", "Client and Operator"])}
             </div>
             ${signupLanguageSection()}
             <label class="terms-check">
@@ -572,7 +572,7 @@ window.SkillNestPages = (() => {
           ${C.field("Email", "operatorAuthEmail", "you@example.com", "email")}
           ${C.field("Password", "operatorAuthPassword", "Create a password", "password")}
         </div>
-        <button class="btn primary full" type="submit">Join as a Hatcher</button>
+        <button class="btn primary full" type="submit">Join as an Operator</button>
         <p class="form-note">MVP preview: your account and the Google option are simulated locally on this device.</p>
       </form>
     `;
@@ -639,8 +639,8 @@ window.SkillNestPages = (() => {
   }
 
   function operatorPage(account, wizard = { step: "account", draft: {} }, loggedIn = false) {
-    /* Hatcher application wizard DISABLED — joining as a Hatcher is now instant.
-       Selecting "Become a Hatcher" and setting up an account makes you a Hatcher
+    /* Operator application wizard DISABLED — joining as an Operator is now instant.
+       Selecting "Become an Operator" and setting up an account makes you an Operator
        right away; there is no about-you / focus-areas / submit / review flow.
        The multi-step application is kept here, commented out, in case it returns.
     const { step, draft } = wizard;
@@ -662,9 +662,9 @@ window.SkillNestPages = (() => {
       <main class="section page">
         <div class="form-layout">
           <div class="form-copy">
-            <div class="section-label">Become a Hatcher</div>
-            <h1>Join as a Hatcher and start building.</h1>
-            <p>Set up the account you’ll hatch under — that’s it. You’re a Hatcher the moment you join.</p>
+            <div class="section-label">Become an Operator</div>
+            <h1>Join as an Operator and start building.</h1>
+            <p>Set up the account you’ll hatch under — that’s it. You’re an Operator the moment you join.</p>
             <div class="operator-info">
               <h2>Growth path</h2>
               <p>L1 support Hatches -> L2 business Hatches -> L3 specialized Hatches -> L4 strategy later.</p>
@@ -691,13 +691,13 @@ window.SkillNestPages = (() => {
         ${items.map((item) => {
           const id = item.id || encodeURIComponent(item.title);
           const status = item.status || "";
-          // Hatcher's claimed Hatches can submit work; posted Hatches with a
+          // Operator's claimed Hatches can submit work; posted Hatches with a
           // deliverable waiting can be reviewed by the poster.
           const canSubmit = type === "mission" && (status === "Incubating" || status === "Accepted");
           const awaitingReview = type === "mission" && status === "In review";
           const submissionPending = type === "posted" && item.submission && item.submission.status === "pending";
           const canReview = type === "posted" && (item.submission || (item.backendId && status !== "Hatched"));
-          // Surface the review state right in the row so the Hatcher sees their
+          // Surface the review state right in the row so the Operator sees their
           // work is with the client, and the client sees work is waiting.
           const reviewNote = awaitingReview
             ? `<p class="mission-review-note reviewing">📮 Submitted — the client is reviewing your work.</p>`
@@ -711,7 +711,7 @@ window.SkillNestPages = (() => {
           // Saved hatch belongs to strangers, and the server would 403.
           const canMessage = Boolean(item.backendId)
             && (type === "posted" || ["Incubating", "Accepted", "In review", "Hatched"].includes(status));
-          const messageLabel = type === "posted" ? "Message Hatcher" : "Message client";
+          const messageLabel = type === "posted" ? "Message Operator" : "Message client";
           return `
           <article${awaitingReview ? ` class="is-in-review"` : ""}>
             <div>
@@ -786,7 +786,7 @@ window.SkillNestPages = (() => {
           </section>
           <section class="profile-card wide">
             <div class="card-title-row">
-              <h2>Hatcher Hatches</h2>
+              <h2>Operator Hatches</h2>
               <button class="btn secondary small" type="button" onclick="SkillNestApp.setRoute('browse')">Find Hatches</button>
             </div>
             ${miniTaskList(missions, "Saved or Incubating Hatches will appear here.", { removable: true, type: "mission" })}
@@ -798,13 +798,13 @@ window.SkillNestPages = (() => {
             </div>
             <p class="muted-text">${unread
               ? `You have ${unread} unread message${unread === 1 ? "" : "s"} waiting.`
-              : "Chat with clients and Hatchers, and get updates from Hatch, in Messages."}</p>
+              : "Chat with clients and Operators, and get updates from Hatch, in Messages."}</p>
           </section>
-          ${/* Hatcher application card DISABLED — joining as a Hatcher is instant now (no application or review step).
+          ${/* Operator application card DISABLED — joining as an Operator is instant now (no application or review step).
           <section class="profile-card wide">
             <div class="card-title-row">
-              <h2>Hatcher application</h2>
-              <button class="btn secondary small" type="button" onclick="SkillNestApp.updateHatcherApplication()">${operatorApplications.length ? "Update application" : "Apply"}</button>
+              <h2>Operator application</h2>
+              <button class="btn secondary small" type="button" onclick="SkillNestApp.updateOperatorApplication()">${operatorApplications.length ? "Update application" : "Apply"}</button>
             </div>
             ${operatorApplicationSummary(operatorApplications)}
           </section>
@@ -835,7 +835,7 @@ window.SkillNestPages = (() => {
         <p class="muted-text">These numbers power the rolling banner under the top bar. They're shown to every visitor on the marketing, browse, and sign-up pages.</p>
         <form class="stats-admin-form" onsubmit="SkillNestApp.saveSiteStats(event)">
           <div class="stats-admin-grid">
-            ${numberField("statActiveHatchers", "Active Hatchers", stats.activeHatchers)}
+            ${numberField("statActiveHatchers", "Active Operators", stats.activeHatchers)}
             ${numberField("statOpenHatches", "Open Hatches", stats.openHatches)}
             ${numberField("statActiveClients", "Active clients", stats.activeClients)}
             ${numberField("statHatchesLastWeek", "Hatches done last week", stats.hatchesLastWeek)}
@@ -866,9 +866,9 @@ window.SkillNestPages = (() => {
     const sourceLabel = { posted: "posted here", seed: "demo listing", backend: "backend" };
     return `
       ${statsBannerAdminCard()}
-      ${/* Admin · Hatcher applications review DISABLED — Hatchers no longer submit applications to approve/reject.
+      ${/* Admin · Operator applications review DISABLED — Operators no longer submit applications to approve/reject.
       <section class="profile-card wide admin-panel">
-        <div class="card-title-row"><h2>Admin &middot; Hatcher applications</h2></div>
+        <div class="card-title-row"><h2>Admin &middot; Operator applications</h2></div>
         ${pending.length ? `
           <div class="profile-list">
             ${pending.map((application) => `
@@ -927,7 +927,7 @@ window.SkillNestPages = (() => {
   }
 
   function operatorApplicationSummary(applications) {
-    if (!applications.length) return `<p class="muted-text">Your Hatcher application summary will appear here after you apply.</p>`;
+    if (!applications.length) return `<p class="muted-text">Your Operator application summary will appear here after you apply.</p>`;
     const application = applications[0];
     const row = (label, value) => `<div><dt>${label}</dt><dd>${C.escapeHtml(value || "-")}</dd></div>`;
     const linkedinRow = application.linkedin
@@ -1191,17 +1191,17 @@ window.SkillNestPages = (() => {
 
     const howItWorksSteps = [
       ["1", "Describe the work", "Talk to Chickie, Hatch's AI intake assistant, in plain language. It asks only what's still unclear and shapes everything into a structured brief."],
-      ["2", "Review and post", "Check the brief, adjust anything that's off, and post it. Hatchers see the exact brief you approved — no re-explaining the project."],
-      ["3", "A Hatcher claims it", "A verified Hatcher matched to the work claims the Hatch and gets started."],
-      ["4", "Submit and review", "The Hatcher submits their work. You review it, request changes if something's missing, or approve it as complete."],
+      ["2", "Review and post", "Check the brief, adjust anything that's off, and post it. Operators see the exact brief you approved — no re-explaining the project."],
+      ["3", "An Operator claims it", "A verified Operator matched to the work claims the Hatch and gets started."],
+      ["4", "Submit and review", "The Operator submits their work. You review it, request changes if something's missing, or approve it as complete."],
       ["5", "Resolve issues if they come up", "Either side can open a dispute if something's not working out. A Hatch can also be cancelled by the client any time before it's claimed."],
     ];
 
     const faq = [
-      ["What exactly is a Hatch?", "One piece of business work — content, a website, a workflow, research — scoped into a brief a Hatcher can act on without back-and-forth."],
-      ["Who are Hatchers?", "Verified people who deliver the work. They're leveled L1 through L4 by the complexity of Hatches they've actually completed, not by self-reported skills."],
-      ["What if the work isn't right?", "Request changes before approving. If it still isn't resolved, either you or the Hatcher can open a dispute."],
-      ["Can I cancel a Hatch?", "Yes — the client who posted it can cancel any time before a Hatcher claims it."],
+      ["What exactly is a Hatch?", "One piece of business work — content, a website, a workflow, research — scoped into a brief an Operator can act on without back-and-forth."],
+      ["Who are Operators?", "Verified people who deliver the work. They're leveled L1 through L4 by the complexity of Hatches they've actually completed, not by self-reported skills."],
+      ["What if the work isn't right?", "Request changes before approving. If it still isn't resolved, either you or the Operator can open a dispute."],
+      ["Can I cancel a Hatch?", "Yes — the client who posted it can cancel any time before an Operator claims it."],
       ["How is pricing set?", "You set a budget range when you post. The Hatch's level and expected timeline are part of what shapes a fair number."],
     ];
 
@@ -1210,7 +1210,7 @@ window.SkillNestPages = (() => {
         <section class="section page trust-page">
           <div class="section-label">About</div>
           <h1>About Hatch.</h1>
-          <p class="section-kicker about-intro">Hatch pairs an AI intake assistant with verified Hatchers so a messy idea becomes a clear, executable brief — then real, delivered work. Clients describe what they need in plain language; Hatchers deliver it and build a track record that speaks for itself.</p>
+          <p class="section-kicker about-intro">Hatch pairs an AI intake assistant with verified Operators so a messy idea becomes a clear, executable brief — then real, delivered work. Clients describe what they need in plain language; Operators deliver it and build a track record that speaks for itself.</p>
           <div class="trust-block">
             <div class="section-head">
               <div>
@@ -1226,7 +1226,7 @@ window.SkillNestPages = (() => {
             <div class="section-head">
               <div>
                 <h2>Hatch Levels</h2>
-                <p class="section-kicker">Hatches are grouped by complexity so Hatchers build up from simpler work.</p>
+                <p class="section-kicker">Hatches are grouped by complexity so Operators build up from simpler work.</p>
               </div>
             </div>
             <div class="level-grid mature-grid">
@@ -1247,8 +1247,8 @@ window.SkillNestPages = (() => {
           <div class="trust-block">
             <div class="section-head">
               <div>
-                <h2>Hatcher Trust</h2>
-                <p class="section-kicker">Hatcher cards show Hatched work, ratings, on-time delivery, and category context.</p>
+                <h2>Operator Trust</h2>
+                <p class="section-kicker">Operator cards show Hatched work, ratings, on-time delivery, and category context.</p>
               </div>
             </div>
             <div class="operator-grid section-nested mature-grid">${operators.map((operator) => C.operatorCard(operator)).join("")}</div>
@@ -1302,19 +1302,19 @@ window.SkillNestPages = (() => {
     return legalPage({
       label: "Legal",
       title: "Terms & Conditions.",
-      intro: "These terms are the agreement between you and Hatch when you create an account, post a Hatch, or deliver work as a Hatcher. By using Hatch you accept them.",
+      intro: "These terms are the agreement between you and Hatch when you create an account, post a Hatch, or deliver work as an Operator. By using Hatch you accept them.",
       sections: [
         ["Accepting these terms", "By creating an account or otherwise using Hatch, you confirm that you have read, understood, and agree to be bound by these Terms & Conditions and our Privacy Policy. If you do not agree, please do not use the platform."],
         ["Who can use Hatch", "You must be at least 18 years old and able to enter into a binding contract. When you sign up as a business or on behalf of one, you confirm you are authorized to accept these terms for that business."],
         ["Your account", "You are responsible for keeping your login details secure and for everything that happens under your account. Give us accurate information when you sign up and keep it current. Tell us promptly if you suspect any unauthorized use."],
-        ["How Hatch works", "Hatch is a marketplace. Clients post Hatches — scoped pieces of business work — and verified Hatchers deliver them. Hatch provides the platform, the AI intake assistant, and the tools that connect the two sides. Hatch is not a party to the agreement between a client and a Hatcher, does not perform the work itself, and does not employ Hatchers."],
-        ["Posting and claiming Hatches", "Clients are responsible for describing work accurately and setting a fair budget and timeline. Hatchers are responsible for delivering what was agreed, on time, and to a professional standard. Once a Hatcher claims a Hatch, both sides are expected to see it through the review process in good faith."],
-        ["Payments", "Budgets are agreed between the client and the Hatcher at the point of posting and claiming. In this MVP preview no real payments are processed. When payments launch, applicable fees, payout timing, and refund rules will be disclosed before you are charged, and will form part of these terms."],
-        ["Content and intellectual property", "You keep ownership of the content and materials you upload. You grant Hatch a limited license to store, display, and process that content only as needed to run the platform. Unless a client and Hatcher agree otherwise in writing, ownership of delivered work transfers to the client once the Hatch is approved and any agreed payment is made."],
+        ["How Hatch works", "Hatch is a marketplace. Clients post Hatches — scoped pieces of business work — and verified Operators deliver them. Hatch provides the platform, the AI intake assistant, and the tools that connect the two sides. Hatch is not a party to the agreement between a client and an Operator, does not perform the work itself, and does not employ Operators."],
+        ["Posting and claiming Hatches", "Clients are responsible for describing work accurately and setting a fair budget and timeline. Operators are responsible for delivering what was agreed, on time, and to a professional standard. Once an Operator claims a Hatch, both sides are expected to see it through the review process in good faith."],
+        ["Payments", "Budgets are agreed between the client and the Operator at the point of posting and claiming. In this MVP preview no real payments are processed. When payments launch, applicable fees, payout timing, and refund rules will be disclosed before you are charged, and will form part of these terms."],
+        ["Content and intellectual property", "You keep ownership of the content and materials you upload. You grant Hatch a limited license to store, display, and process that content only as needed to run the platform. Unless a client and Operator agree otherwise in writing, ownership of delivered work transfers to the client once the Hatch is approved and any agreed payment is made."],
         ["Acceptable use", "Do not use Hatch to post illegal, infringing, deceptive, or harmful work; to harass or defraud others; to bypass the platform to avoid fees; to scrape or overload the service; or to misrepresent your identity, skills, or verification status. We may remove content or suspend accounts that break these rules."],
-        ["Disputes between users", "If a Hatch does not go as planned, use the built-in review and dispute tools first — a client can request changes before approving, and either side can open a dispute. Hatch may help mediate but is not obligated to resolve disputes and is not responsible for the outcome of work delivered by Hatchers."],
-        ["Disclaimers", "Hatch is provided \"as is\" and \"as available.\" We do not guarantee that Hatchers will meet your expectations, that Hatches will be claimed, or that the service will be uninterrupted or error-free. AI-generated briefs and suggestions are aids, not guarantees, and should be reviewed before you rely on them."],
-        ["Limitation of liability", "To the fullest extent permitted by law, Hatch is not liable for indirect, incidental, or consequential damages, or for the acts, omissions, or work quality of any client or Hatcher. Our total liability for any claim relating to the service is limited to the fees you paid to Hatch in the three months before the claim arose."],
+        ["Disputes between users", "If a Hatch does not go as planned, use the built-in review and dispute tools first — a client can request changes before approving, and either side can open a dispute. Hatch may help mediate but is not obligated to resolve disputes and is not responsible for the outcome of work delivered by Operators."],
+        ["Disclaimers", "Hatch is provided \"as is\" and \"as available.\" We do not guarantee that Operators will meet your expectations, that Hatches will be claimed, or that the service will be uninterrupted or error-free. AI-generated briefs and suggestions are aids, not guarantees, and should be reviewed before you rely on them."],
+        ["Limitation of liability", "To the fullest extent permitted by law, Hatch is not liable for indirect, incidental, or consequential damages, or for the acts, omissions, or work quality of any client or Operator. Our total liability for any claim relating to the service is limited to the fees you paid to Hatch in the three months before the claim arose."],
         ["Suspension and termination", "You may close your account at any time. We may suspend or terminate access if you breach these terms or use the platform in a way that harms other users or Hatch. Sections that by their nature should survive termination — such as content licenses granted, disclaimers, and liability limits — will continue to apply."],
         ["Changes to these terms", "We may update these terms as Hatch evolves. When we make material changes we will update the date above and, where appropriate, notify you. Continuing to use Hatch after changes take effect means you accept the updated terms."],
         ["Contact", "Questions about these terms can be sent to hello@hatch.example."],
@@ -1330,7 +1330,7 @@ window.SkillNestPages = (() => {
       sections: [
         ["Information you give us", "When you sign up we collect your username, name, email, chosen role, language preferences, and password. When you post or deliver a Hatch we collect the briefs, messages, files, and results you submit."],
         ["Information collected automatically", "To run the app in your browser we store data locally on your device — including your session, draft Hatches, and appearance settings — and basic technical information needed to keep you signed in and the service working."],
-        ["How we use your information", "We use your information to create and secure your account, match clients with Hatchers, power the AI intake assistant, deliver messages, show your track record, and improve the platform. We do not sell your personal information."],
+        ["How we use your information", "We use your information to create and secure your account, match clients with Operators, power the AI intake assistant, deliver messages, show your track record, and improve the platform. We do not sell your personal information."],
         ["When we share information", "Parts of your profile and the Hatches you post or complete are visible to other users so the marketplace can function. Verified results are shared publicly only when you choose to publish them. We may share data with service providers who help us operate Hatch, or when required by law."],
         ["Local storage and cookies", "Hatch stores information in your browser's local storage to keep you signed in and remember your preferences. Clearing your browser storage will sign you out and remove locally saved drafts and settings."],
         ["Data retention", "We keep your information for as long as your account is active or as needed to provide the service and meet legal obligations. You can ask us to delete your account and associated personal data."],
@@ -1346,7 +1346,7 @@ window.SkillNestPages = (() => {
     aboutPage,
     authPage,
     browsePage,
-    findHatchersPage,
+    findOperatorsPage,
     findClientsPage,
     homePage,
     howItWorksPage,

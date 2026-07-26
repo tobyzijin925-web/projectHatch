@@ -1,5 +1,5 @@
 window.SkillNestComponents = (() => {
-  const { taskChips, operators, clients, hatchedWork, completedHatches, hatcherProfiles } = window.SkillNestData;
+  const { taskChips, operators, clients, hatchedWork, completedHatches, operatorProfiles } = window.SkillNestData;
 
   // The assistant's display name in the chat UI. Change this one value to
   // rename it everywhere it appears to users. (The matching name inside the AI
@@ -52,16 +52,16 @@ window.SkillNestComponents = (() => {
     return `<span class="user-avatar system-avatar ${className}" aria-hidden="true">🐣</span>`;
   }
 
-  function hatcherForWork(work) {
-    return hatcherProfiles.find((profile) => profile.id === work.hatcherId);
+  function operatorForWork(work) {
+    return operatorProfiles.find((profile) => profile.id === work.operatorId);
   }
 
-  function visibleHatcherName(work) {
-    const profile = hatcherForWork(work);
-    if (!work.showProfile) return "Private Hatcher";
-    // Published results (from a real client review) carry a plain hatcherName
-    // instead of a seeded hatcherProfiles entry, so fall back to that.
-    return profile?.name || work.hatcherName || "Private Hatcher";
+  function visibleOperatorName(work) {
+    const profile = operatorForWork(work);
+    if (!work.showProfile) return "Private Operator";
+    // Published results (from a real client review) carry a plain operatorName
+    // instead of a seeded operatorProfiles entry, so fall back to that.
+    return profile?.name || work.operatorName || "Private Operator";
   }
 
   function visibleEarnings(work) {
@@ -425,7 +425,7 @@ window.SkillNestComponents = (() => {
         !timeline ? "timeline" : "",
         !references.length ? "references" : "",
       ].filter(Boolean),
-      recommendedHatcherType: level === "L3" || level === "L4" ? `${level} specialist Hatcher` : `${level} practical Hatcher`,
+      recommendedOperatorType: level === "L3" || level === "L4" ? `${level} specialist Operator` : `${level} practical Operator`,
       summary: suggestedObjective(cleanText, industry, category),
       sourceText: cleanText,
       files,
@@ -458,7 +458,7 @@ window.SkillNestComponents = (() => {
     if (brief.category === "Website") return "It sounds like you need a clear web presence that explains the offer and helps people take action.";
     if (brief.category === "Operations") return "It sounds like you want to reduce manual work and make the process easier to repeat.";
     if (brief.category === "Customer Support") return "It sounds like you want clearer customer responses so common questions are handled consistently.";
-    return "It sounds like you have a practical project that needs to be shaped into clear work a Hatcher can execute.";
+    return "It sounds like you have a practical project that needs to be shaped into clear work an Operator can execute.";
   }
 
   function briefSearchText(brief = {}) {
@@ -478,7 +478,7 @@ window.SkillNestComponents = (() => {
     if (text.includes("menu") || text.includes("restaurant") || text.includes("cafe") || text.includes("instagram")) {
       return {
         key: "references",
-        reason: "The Hatcher needs the actual food details so the work is accurate, not generic.",
+        reason: "The Operator needs the actual food details so the work is accurate, not generic.",
         prompt: "Can you provide a menu photo/link, item list with prices, or examples of your current style?",
         suggestions: ["I can attach a menu", "I can paste food items", "No menu yet", "Use best judgment"],
         placeholder: "Paste menu items, prices, links, or notes",
@@ -487,7 +487,7 @@ window.SkillNestComponents = (() => {
     if (text.includes("website") || text.includes("salon") || text.includes("booking")) {
       return {
         key: "references",
-        reason: "The Hatcher needs the real services, prices, photos, and booking details.",
+        reason: "The Operator needs the real services, prices, photos, and booking details.",
         prompt: "What source material can you provide for the website?",
         suggestions: ["Services and prices", "Photos/logo", "Existing website", "No materials yet"],
         placeholder: "Paste services, prices, links, or notes",
@@ -496,7 +496,7 @@ window.SkillNestComponents = (() => {
     if (text.includes("product") || text.includes("shopify") || text.includes("e-commerce") || text.includes("ecommerce")) {
       return {
         key: "references",
-        reason: "The Hatcher needs product details to avoid guessing.",
+        reason: "The Operator needs product details to avoid guessing.",
         prompt: "Can you share product names, current descriptions, photos, or a store link?",
         suggestions: ["Product list", "Store link", "Current descriptions", "No materials yet"],
         placeholder: "Paste product details, links, or notes",
@@ -505,7 +505,7 @@ window.SkillNestComponents = (() => {
     if (text.includes("faq") || text.includes("chatbot") || text.includes("support") || text.includes("reply")) {
       return {
         key: "references",
-        reason: "The Hatcher needs real customer questions and policies to write useful replies.",
+        reason: "The Operator needs real customer questions and policies to write useful replies.",
         prompt: "Can you share your FAQ, policies, common questions, or tone examples?",
         suggestions: ["FAQ/policies", "Common questions", "Tone examples", "No materials yet"],
         placeholder: "Paste FAQ, policies, questions, or notes",
@@ -513,8 +513,8 @@ window.SkillNestComponents = (() => {
     }
     return {
       key: "references",
-      reason: "Source material helps the Hatcher work from real context instead of guessing.",
-      prompt: "What source material should the Hatcher use?",
+      reason: "Source material helps the Operator work from real context instead of guessing.",
+      prompt: "What source material should the Operator use?",
       suggestions: ["I have files", "I have links", "No materials yet"],
       placeholder: "Paste a link, note, or source material",
     };
@@ -553,7 +553,7 @@ window.SkillNestComponents = (() => {
     if (missing.includes("budget")) {
       return {
         key: "budget",
-        reason: "Budget helps keep the project realistic before Hatchers apply.",
+        reason: "Budget helps keep the project realistic before Operators apply.",
         prompt: "What budget range are you comfortable with?",
         suggestions: ["Under $100", "$100-300", "$300-1000", "Flexible"],
         placeholder: "Custom budget",
@@ -562,7 +562,7 @@ window.SkillNestComponents = (() => {
     if (missing.includes("industry")) {
       return {
         key: "industry",
-        reason: "The business context changes the examples, tools, and Hatcher experience that matter.",
+        reason: "The business context changes the examples, tools, and Operator experience that matter.",
         prompt: "What type of business or project is this for?",
         suggestions: ["Restaurant", "Retail", "Professional Services", "Education", "Other"],
         placeholder: "Type of business",
@@ -629,12 +629,12 @@ window.SkillNestComponents = (() => {
     { id: "title", label: "I understand what you need", short: "Need is understood", prompt: "Here’s how I’d write this.", optional: false },
     { id: "businessType", label: "I know who it is for", short: "Who it is for", prompt: "I think this is who the work is for.", optional: false },
     { id: "summary", label: "I understand the outcome", short: "Outcome is clear", prompt: "Here’s how I’d summarize the goal.", multiline: true, optional: false },
-    { id: "deliverables", label: "I know what should be delivered", short: "Outputs are clear", prompt: "Here’s what I think the Hatcher should create.", multiline: true, list: true, optional: false },
+    { id: "deliverables", label: "I know what should be delivered", short: "Outputs are clear", prompt: "Here’s what I think the Operator should create.", multiline: true, list: true, optional: false },
     { id: "suggestedTimeline", label: "Timeline is clear", short: "Timeline is clear", prompt: "Here’s the timeline I’d use for now.", optional: false },
     { id: "suggestedBudget", label: "Budget is clear", short: "Budget is clear", prompt: "Here’s the budget range I’d suggest.", optional: false },
     { id: "industry", label: "Context is clear", short: "Context is clear", prompt: "Here’s the category I’d use for matching.", optional: false },
     { id: "references", label: "Source material is clear", short: "Source material", prompt: "Here’s what I found for references or files.", multiline: true, list: true, optional: true },
-    { id: "constraints", label: "Ready for a Hatcher", short: "Ready for Hatcher", prompt: "Here’s what I’d note so the work stays on track.", multiline: true, list: true, optional: true },
+    { id: "constraints", label: "Ready for an Operator", short: "Ready for Operator", prompt: "Here’s what I’d note so the work stays on track.", multiline: true, list: true, optional: true },
   ];
 
   function readLocalJson(key, fallback) {
@@ -763,7 +763,7 @@ window.SkillNestComponents = (() => {
       <div class="compact-insight-card quality-check-card">
         <div class="insight-card-head">
           <h3>${needsDetail ? "This is almost ready." : "This looks ready."}</h3>
-          <p>${needsDetail ? "One or two details could make this clearer." : "The brief has enough shape for a Hatcher to understand it."}</p>
+          <p>${needsDetail ? "One or two details could make this clearer." : "The brief has enough shape for an Operator to understand it."}</p>
         </div>
         <div class="quality-check-grid">
           ${rows.map(([label, value]) => `
@@ -777,25 +777,25 @@ window.SkillNestComponents = (() => {
     `;
   }
 
-  function localHatcherQuestions(brief = {}, files = []) {
+  function localOperatorQuestions(brief = {}, files = []) {
     const questions = [];
     if (!brief.audience) questions.push("Who is the main audience?");
     if (!Array.isArray(brief.references) || !brief.references.length) questions.push("Do you have brand examples or source material?");
-    if (!files.length && (!brief.references || !brief.references.length)) questions.push("Should the Hatcher use any files, photos, menus, or links?");
+    if (!files.length && (!brief.references || !brief.references.length)) questions.push("Should the Operator use any files, photos, menus, or links?");
     if (!Array.isArray(brief.constraints) || !brief.constraints.length) questions.push("Should the tone be formal, friendly, or something else?");
     if (!brief.suggestedTimeline || /flexible/i.test(brief.suggestedTimeline)) questions.push("Is the timeline flexible?");
-    if (!questions.length) questions.push("Should the final version be editable?", "Are there any details the Hatcher should avoid?");
+    if (!questions.length) questions.push("Should the final version be editable?", "Are there any details the Operator should avoid?");
     return questions.slice(0, 4);
   }
 
-  function hatcherQuestionsCard(brief = {}, files = []) {
-    const questions = Array.isArray(brief.hatcherQuestions) && brief.hatcherQuestions.length
-      ? brief.hatcherQuestions.slice(0, 4)
-      : localHatcherQuestions(brief, files);
+  function operatorQuestionsCard(brief = {}, files = []) {
+    const questions = Array.isArray(brief.operatorQuestions) && brief.operatorQuestions.length
+      ? brief.operatorQuestions.slice(0, 4)
+      : localOperatorQuestions(brief, files);
     return `
-      <div class="compact-insight-card hatcher-questions-card">
+      <div class="compact-insight-card operator-questions-card">
         <div class="insight-card-head">
-          <h3>A Hatcher might still ask…</h3>
+          <h3>An Operator might still ask…</h3>
           <p>You can answer these now or post anyway.</p>
         </div>
         <ul>
@@ -871,12 +871,12 @@ window.SkillNestComponents = (() => {
       title: withValue ? "I’ve drafted a project title in the background. What would you call this in your own words?" : "What should we call this Hatch?",
       businessType: withValue ? "I think I understand who this is for. Is there anything specific about the business I should know?" : "Who is this for?",
       summary: withValue ? "I’ve got the main goal. What outcome matters most to you?" : "What outcome are you hoping for?",
-      deliverables: withValue ? "I’ve started listing the deliverables. What should the Hatcher definitely hand over?" : "What should the Hatcher deliver?",
+      deliverables: withValue ? "I’ve started listing the deliverables. What should the Operator definitely hand over?" : "What should the Operator deliver?",
       suggestedTimeline: withValue ? "I’ve put a timeline in the brief. Should we keep it, or make it flexible?" : "When would you ideally like this finished?",
       suggestedBudget: withValue ? "I’ve added a budget direction. Should we keep that, or leave it flexible?" : "What budget range feels comfortable?",
       industry: withValue ? "I’ve matched this to an industry. Does that category fit?" : "What industry or category does this belong to?",
-      references: "Do you have examples, files, or links the Hatcher should follow?",
-      constraints: "Anything the Hatcher should avoid or keep in mind?",
+      references: "Do you have examples, files, or links the Operator should follow?",
+      constraints: "Anything the Operator should avoid or keep in mind?",
     };
     return questions[section.id] || "What should Hatch know for this part?";
   }
@@ -965,7 +965,7 @@ window.SkillNestComponents = (() => {
       ["Budget", brief.suggestedBudget || "Flexible"],
       ["Timeline", brief.suggestedTimeline || "Flexible"],
       ["Files / references", Array.isArray(brief.references) && brief.references.length ? brief.references.join(", ") : "No references provided"],
-      ["Recommended Hatcher level", brief.recommendedHatcherType || brief.suggestedLevel || "L1"],
+      ["Recommended Operator level", brief.recommendedOperatorType || brief.suggestedLevel || "L1"],
     ];
     return `
       <div class="final-review">
@@ -987,7 +987,7 @@ window.SkillNestComponents = (() => {
           </article>
         </div>
         ${qualityCheckCard(brief)}
-        ${hatcherQuestionsCard(brief, files)}
+        ${operatorQuestionsCard(brief, files)}
         <div class="focused-actions">
           <button class="btn primary" type="button" onclick="SkillNestApp.submitReviewedHatch()">Submit Hatch</button>
           <button class="btn secondary" type="button" onclick="SkillNestApp.toggleFinalEditList()">Edit brief</button>
@@ -1131,7 +1131,7 @@ window.SkillNestComponents = (() => {
       <div class="tracker-card">
         <div class="builder-progress">
           <span>${isFinal ? "Final check" : `Step ${stepNumber} of ${builderSections.length}`}</span>
-          <strong>${isFinal ? "Ready for a Hatcher" : escapeHtml(builderSections[activeIndex].label)}</strong>
+          <strong>${isFinal ? "Ready for an Operator" : escapeHtml(builderSections[activeIndex].label)}</strong>
         </div>
         <div class="step-track">
           ${builderSections.map((section, index) => `<span class="${completed.includes(section.id) ? "done" : ""} ${index === activeIndex ? "active" : ""}"></span>`).join("")}
@@ -1156,7 +1156,7 @@ window.SkillNestComponents = (() => {
       return `
         <section class="clarification-card ready">
           <h2>Ready to post.</h2>
-          <p>Your project brief has enough detail for Hatchers to understand the work.</p>
+          <p>Your project brief has enough detail for Operators to understand the work.</p>
         </section>
       `;
     }
@@ -1237,7 +1237,7 @@ window.SkillNestComponents = (() => {
           </div>
           <input id="composeAttachFile" class="hidden-file" type="file" multiple onchange="SkillNestApp.handleTaskFiles(event)" />
           <div class="review-post-panel">
-            ${ready ? `<p class="review-ready-note">${escapeHtml(ASSISTANT_LABEL)} thinks this Hatch is ready. Look it over, then post it for Hatchers.</p>` : ""}
+            ${ready ? `<p class="review-ready-note">${escapeHtml(ASSISTANT_LABEL)} thinks this Hatch is ready. Look it over, then post it for Operators.</p>` : ""}
             <button class="btn primary full review-post-cta" type="button" ${ready ? "" : "disabled"} onclick="SkillNestApp.openHatchReview()">Review and Post</button>
           </div>
           <p class="assistant-input-hint">Type freely — Hatch will organize it.</p>
@@ -1248,7 +1248,7 @@ window.SkillNestComponents = (() => {
   }
 
   // Small "+" trigger next to the reply box. Opens upward (native <details>,
-  // no JS needed to toggle) with generic upload categories so a Hatcher can
+  // no JS needed to toggle) with generic upload categories so an Operator can
   // attach a file at any point in the conversation, not only when Hatch is
   // specifically asking for reference material.
   function attachMenuMarkup() {
@@ -1369,13 +1369,13 @@ window.SkillNestComponents = (() => {
     `;
   }
 
-  // "Hatches" and "Hatchers" collapsed into one "Browse" trigger with a
+  // "Hatches" and "Operators" collapsed into one "Browse" trigger with a
   // dropdown, so the top nav doesn't run out of room as more destinations get
   // added — the same crowding problem the "About Hatch" merge solved earlier.
   function browseNavDropdown(active) {
     const options = [
       ["browse", "#browse", "Hatches"],
-      ["hatchers", "#hatchers", "Hatchers"],
+      ["operators", "#operators", "Operators"],
       ["clients", "#clients", "Clients"],
     ];
     const isActive = options.some(([key]) => key === active);
@@ -1407,9 +1407,9 @@ window.SkillNestComponents = (() => {
       : `🟢 <strong>Live on Hatch right now</strong>`;
     const items = [
       lead,
-      `🐣 <strong>${nf(stats.activeHatchers)}</strong> active Hatchers`,
+      `🐣 <strong>${nf(stats.activeHatchers)}</strong> active Operators`,
       `📋 <strong>${nf(stats.openHatches)}</strong> open Hatches`,
-      `🔍 <strong>${nf(stats.activeClients)}</strong> clients looking for Hatchers`,
+      `🔍 <strong>${nf(stats.activeClients)}</strong> clients looking for Operators`,
       `✅ <strong>${nf(stats.hatchesLastWeek)}</strong> Hatches completed this week`,
       `👥 <strong>${nf(stats.people)}</strong> people in the Hatch community`,
     ];
@@ -1441,14 +1441,14 @@ window.SkillNestComponents = (() => {
       : `<a class="nav-login" href="#auth">Log in</a>
          <button class="btn primary nav-cta" type="button" onclick="SkillNestApp.setRoute('signup')">Get Hatch free</button>`;
 
-    // Existing Hatchers (signed in with a Hatcher/Operator role) already reach
+    // Existing Operators (signed in with an Operator role) already reach
     // the levels/ranking guide through "About Hatch" below, so they don't need
-    // a second, differently-labeled link to the same page — only non-Hatchers
+    // a second, differently-labeled link to the same page — only non-Operators
     // get the distinct "apply" call to action.
-    const isHatcher = isLoggedIn && /hatcher|operator/i.test(String(account.role || ""));
-    const hatcherLink = isHatcher
+    const isOperator = isLoggedIn && /operator|operator/i.test(String(account.role || ""));
+    const operatorLink = isOperator
       ? ""
-      : `<a href="#operator" class="${active === "operator" ? "active" : ""}">Become a Hatcher</a>`;
+      : `<a href="#operator" class="${active === "operator" ? "active" : ""}">Become an Operator</a>`;
 
     return `
       <header class="topbar">
@@ -1461,7 +1461,7 @@ window.SkillNestComponents = (() => {
               ${browseNavDropdown(active)}
               <div class="nav-links">
                 <a href="#verified-work" class="${active === "verified-work" ? "active" : ""}">Verified Results</a>
-                ${hatcherLink}
+                ${operatorLink}
                 <a href="#about" class="secondary-link ${active === "about" ? "active" : ""}">About Hatch</a>
               </div>
             </div>
@@ -1551,7 +1551,7 @@ window.SkillNestComponents = (() => {
   // built-in feature — not just a small icon that appears after logging in.
   function messagingFeatureSection() {
     const features = [
-      ["💬", "Direct threads", "Message any Hatcher before or during a Hatch — no gig-site inbox, no waiting on a bid."],
+      ["💬", "Direct threads", "Message any Operator before or during a Hatch — no gig-site inbox, no waiting on a bid."],
       ["📎", "Tied to the work", "Tag a thread to its Hatch so context and files stay attached to the project instead of scattered across email."],
       ["🔔", "Nothing missed", "Unread counts, automatic updates, and archiving keep active conversations easy to find."],
     ];
@@ -1561,7 +1561,7 @@ window.SkillNestComponents = (() => {
           <div>
             <div class="section-label">Messaging</div>
             <h2>Talk directly. No middleman.</h2>
-            <p class="section-kicker">Clients and Hatchers message each other straight through Hatch — ask a question, share a file, or check on progress, without leaving the platform.</p>
+            <p class="section-kicker">Clients and Operators message each other straight through Hatch — ask a question, share a file, or check on progress, without leaving the platform.</p>
           </div>
         </div>
         <div class="messaging-feature-grid">
@@ -1574,7 +1574,7 @@ window.SkillNestComponents = (() => {
           `).join("")}
         </div>
         <div class="messaging-actions">
-          <button class="btn primary" type="button" onclick="SkillNestApp.setRoute('hatchers')">Browse Hatchers</button>
+          <button class="btn primary" type="button" onclick="SkillNestApp.setRoute('operators')">Browse Operators</button>
           <button class="btn secondary" type="button" onclick="SkillNestApp.setRoute('messages')">Open Messages</button>
         </div>
       </section>
@@ -1584,7 +1584,7 @@ window.SkillNestComponents = (() => {
   function whyHatchSection() {
     const rows = [
       ["Describing the work", "Write the perfect brief yourself, or get ignored", "Just talk naturally — AI turns it into a complete brief"],
-      ["Finding the right person", "Scroll hundreds of near-identical gigs and reviews", "Matched to a verified Hatcher who fits the project"],
+      ["Finding the right person", "Scroll hundreds of near-identical gigs and reviews", "Matched to a verified Operator who fits the project"],
       ["Speed", "Days of back-and-forth before work even starts", "AI-assisted scoping means work starts in hours, not days"],
       ["Pricing", "Race-to-the-bottom bidding on hourly rates", "Fair prices tied to outcomes and verified results"],
     ];
@@ -1621,7 +1621,7 @@ window.SkillNestComponents = (() => {
           <article class="audience-card reveal">
             <div class="stage-icon" aria-hidden="true">🏪</div>
             <h3>For small businesses</h3>
-            <p>No more guessing what to write in a job post. Describe your problem in plain words, and AI shapes it into a brief a verified Hatcher can act on immediately — real help, faster than any gig site.</p>
+            <p>No more guessing what to write in a job post. Describe your problem in plain words, and AI shapes it into a brief a verified Operator can act on immediately — real help, faster than any gig site.</p>
           </article>
         </div>
       </section>
@@ -1631,7 +1631,7 @@ window.SkillNestComponents = (() => {
   function hatchLifecycleSection() {
     const stages = [
       ["Stage 1", "🥚", "New Hatch", "Business owners post a real business problem they would like AI to solve."],
-      ["Stage 2", "🛠", "Incubating", "A verified Hatcher develops and refines the solution."],
+      ["Stage 2", "🛠", "Incubating", "A verified Operator develops and refines the solution."],
       ["Stage 3", "🐣", "Hatched", "The completed solution is delivered and ready for the business to use."],
     ];
 
@@ -1850,11 +1850,11 @@ window.SkillNestComponents = (() => {
   // Rating and on-time delivery carry the most weight since they're the
   // clearest signal of good work; completed count uses a log curve so a
   // veteran with 50 jobs can't automatically outrank someone with 20 great
-  // ones. Response time and days-since-active reward Hatchers who are
+  // ones. Response time and days-since-active reward Operators who are
   // actually around and quick to reply right now, not just historically good.
   // An optional context (industry/tools the browsing client cares about)
   // adds a match boost on top of that baseline quality score.
-  const HATCHER_SCORE_WEIGHTS = {
+  const OPERATOR_SCORE_WEIGHTS = {
     rating: 0.30,
     onTime: 0.20,
     completed: 0.15,
@@ -1872,7 +1872,7 @@ window.SkillNestComponents = (() => {
     return Number.isNaN(then) ? null : Math.max(0, (Date.now() - then) / 86400000);
   }
 
-  function hatcherMatchScore(operator, context = {}) {
+  function operatorMatchScore(operator, context = {}) {
     const rating = clamp01((parseFloat(operator.rating) - 4) / 1);
     const onTime = clamp01((parseFloat(operator.onTime) - 70) / 30);
     const completed = clamp01(Math.log2((Number(operator.completed) || 0) + 1) / Math.log2(51));
@@ -1884,12 +1884,12 @@ window.SkillNestComponents = (() => {
     const recency = activeDaysAgo === null ? 0.5 : clamp01(1 - activeDaysAgo / 30);
 
     const baseScore = 100 * (
-      HATCHER_SCORE_WEIGHTS.rating * rating +
-      HATCHER_SCORE_WEIGHTS.onTime * onTime +
-      HATCHER_SCORE_WEIGHTS.completed * completed +
-      HATCHER_SCORE_WEIGHTS.responseTime * responseTime +
-      HATCHER_SCORE_WEIGHTS.repeatClients * repeatClients +
-      HATCHER_SCORE_WEIGHTS.recency * recency
+      OPERATOR_SCORE_WEIGHTS.rating * rating +
+      OPERATOR_SCORE_WEIGHTS.onTime * onTime +
+      OPERATOR_SCORE_WEIGHTS.completed * completed +
+      OPERATOR_SCORE_WEIGHTS.responseTime * responseTime +
+      OPERATOR_SCORE_WEIGHTS.repeatClients * repeatClients +
+      OPERATOR_SCORE_WEIGHTS.recency * recency
     );
 
     const industryMatch = context.industry && (operator.industries || []).includes(context.industry) ? 15 : 0;
@@ -1901,31 +1901,31 @@ window.SkillNestComponents = (() => {
     return Math.round(clamp01((baseScore + industryMatch + toolMatch) / 100) * 100);
   }
 
-  // "L2 Hatcher" / "L3 Specialist" -> "L2" / "L3", for level-filter checkboxes.
-  function hatcherLevelBucket(level = "") {
+  // "L2 Operator" / "L3 Specialist" -> "L2" / "L3", for level-filter checkboxes.
+  function operatorLevelBucket(level = "") {
     const match = String(level).match(/L\d/);
     return match ? match[0] : level;
   }
 
   // Directory row: profile image on the left, details on the right — the
-  // Hatcher counterpart to a browse task-card, but laid out two per row
+  // Operator counterpart to a browse task-card, but laid out two per row
   // instead of a card grid, since a person reads more naturally as a wide row
   // than a tall tile. Clicking anywhere opens the full profile; the message
   // button is a direct line that doesn't require opening it first.
-  function hatcherDirectoryCard(operator, context = {}) {
+  function operatorDirectoryCard(operator, context = {}) {
     const searchable = `${operator.name} ${operator.bio} ${operator.industries.join(" ")} ${operator.tools.join(" ")}`;
     return `
-      <article class="hatcher-row-card" data-hatcher-id="${operator.id}" data-level="${escapeHtml(hatcherLevelBucket(operator.level))}" data-level-num="${levelSortValue(operator.level)}" data-rating="${parseFloat(operator.rating) || 0}" data-completed="${Number(operator.completed) || 0}" data-ontime="${parseFloat(operator.onTime) || 0}" data-score="${hatcherMatchScore(operator, context)}" data-industry="${escapeHtml(operator.industries[0] || "")}" data-industry-list="${escapeHtml(operator.industries.join("|"))}" data-search="${escapeHtml(searchable)}" onclick="SkillNestApp.openOperatorProfile('${operator.id}')">
-        <div class="hatcher-row-avatar">${userAvatar(operator, "avatar-xl")}</div>
-        <div class="hatcher-row-body">
-          <div class="hatcher-row-head">
+      <article class="operator-row-card" data-operator-id="${operator.id}" data-level="${escapeHtml(operatorLevelBucket(operator.level))}" data-level-num="${levelSortValue(operator.level)}" data-rating="${parseFloat(operator.rating) || 0}" data-completed="${Number(operator.completed) || 0}" data-ontime="${parseFloat(operator.onTime) || 0}" data-score="${operatorMatchScore(operator, context)}" data-industry="${escapeHtml(operator.industries[0] || "")}" data-industry-list="${escapeHtml(operator.industries.join("|"))}" data-search="${escapeHtml(searchable)}" onclick="SkillNestApp.openOperatorProfile('${operator.id}')">
+        <div class="operator-row-avatar">${userAvatar(operator, "avatar-xl")}</div>
+        <div class="operator-row-body">
+          <div class="operator-row-head">
             <div>
               <h3>${escapeHtml(operator.name)}</h3>
-              <p class="hatcher-row-level">${escapeHtml(operator.level)}</p>
+              <p class="operator-row-level">${escapeHtml(operator.level)}</p>
             </div>
-            <button class="btn secondary small hatcher-message-btn" type="button" onclick="event.stopPropagation(); SkillNestApp.messageHatcher('${operator.id}')">✉️ Message</button>
+            <button class="btn secondary small operator-message-btn" type="button" onclick="event.stopPropagation(); SkillNestApp.messageOperator('${operator.id}')">✉️ Message</button>
           </div>
-          <p class="hatcher-row-bio">${escapeHtml(operator.bio)}</p>
+          <p class="operator-row-bio">${escapeHtml(operator.bio)}</p>
           <div class="metric-grid compact-metric-grid">
             <div><strong>${operator.completed}</strong><span>hatched</span></div>
             <div><strong>${operator.rating}</strong><span>rating</span></div>
@@ -1940,13 +1940,13 @@ window.SkillNestComponents = (() => {
   function recommendedOperators(industry = "", tools = []) {
     const context = { industry, tools };
     const recommended = [...operators]
-      .sort((a, b) => hatcherMatchScore(b, context) - hatcherMatchScore(a, context))
+      .sort((a, b) => operatorMatchScore(b, context) - operatorMatchScore(a, context))
       .slice(0, 3);
 
     return `
       <div class="recommendations">
         <div class="card-title-row">
-          <h2>Recommended Hatchers</h2>
+          <h2>Recommended Operators</h2>
           <span class="tag">${industry ? `Matched to ${escapeHtml(industry)}` : "Top rated"}</span>
         </div>
         <div class="operator-grid">${recommended.map((operator) => operatorCard(operator, true)).join("")}</div>
@@ -1955,10 +1955,10 @@ window.SkillNestComponents = (() => {
   }
 
   // ── Clients directory ────────────────────────────────────────────────────
-  // The Hatcher-facing counterpart to the pieces above: same match-score /
+  // The Operator-facing counterpart to the pieces above: same match-score /
   // card / recommended-row shapes as `operators`, reading client-semantic
-  // fields (posted, hireRate, repeatHatcherRate) instead of the Hatcher ones,
-  // and reusing the hatcher-row-* presentation classes so both directories
+  // fields (posted, hireRate, repeatOperatorRate) instead of the Operator ones,
+  // and reusing the operator-row-* presentation classes so both directories
   // look identical. Only one of the two routes renders at a time, so sharing
   // the CSS classes never collides.
   function clientMatchScore(client, context = {}) {
@@ -1968,17 +1968,17 @@ window.SkillNestComponents = (() => {
     const responseTime = Number.isFinite(client.avgResponseMinutes)
       ? clamp01(1 - (client.avgResponseMinutes - 5) / 175)
       : 0.5;
-    const repeatHatchers = clamp01((Number(client.repeatHatcherRate) || 0) / 100);
+    const repeatOperators = clamp01((Number(client.repeatOperatorRate) || 0) / 100);
     const activeDaysAgo = daysSince(client.lastActiveAt);
     const recency = activeDaysAgo === null ? 0.5 : clamp01(1 - activeDaysAgo / 30);
 
     const baseScore = 100 * (
-      HATCHER_SCORE_WEIGHTS.rating * rating +
-      HATCHER_SCORE_WEIGHTS.onTime * hire +
-      HATCHER_SCORE_WEIGHTS.completed * posted +
-      HATCHER_SCORE_WEIGHTS.responseTime * responseTime +
-      HATCHER_SCORE_WEIGHTS.repeatClients * repeatHatchers +
-      HATCHER_SCORE_WEIGHTS.recency * recency
+      OPERATOR_SCORE_WEIGHTS.rating * rating +
+      OPERATOR_SCORE_WEIGHTS.onTime * hire +
+      OPERATOR_SCORE_WEIGHTS.completed * posted +
+      OPERATOR_SCORE_WEIGHTS.responseTime * responseTime +
+      OPERATOR_SCORE_WEIGHTS.repeatClients * repeatOperators +
+      OPERATOR_SCORE_WEIGHTS.recency * recency
     );
 
     const industryMatch = context.industry && (client.industries || []).includes(context.industry) ? 15 : 0;
@@ -1993,17 +1993,17 @@ window.SkillNestComponents = (() => {
   function clientDirectoryCard(client, context = {}) {
     const searchable = `${client.name} ${client.contact || ""} ${client.bio} ${client.industries.join(" ")} ${client.tools.join(" ")}`;
     return `
-      <article class="hatcher-row-card" data-client-id="${client.id}" data-type="${escapeHtml(client.type)}" data-rating="${parseFloat(client.rating) || 0}" data-posted="${Number(client.posted) || 0}" data-hire="${parseFloat(client.hireRate) || 0}" data-score="${clientMatchScore(client, context)}" data-industry="${escapeHtml(client.industries[0] || "")}" data-industry-list="${escapeHtml(client.industries.join("|"))}" data-search="${escapeHtml(searchable)}" onclick="SkillNestApp.openClientProfile('${client.id}')">
-        <div class="hatcher-row-avatar">${userAvatar(client, "avatar-xl")}</div>
-        <div class="hatcher-row-body">
-          <div class="hatcher-row-head">
+      <article class="operator-row-card" data-client-id="${client.id}" data-type="${escapeHtml(client.type)}" data-rating="${parseFloat(client.rating) || 0}" data-posted="${Number(client.posted) || 0}" data-hire="${parseFloat(client.hireRate) || 0}" data-score="${clientMatchScore(client, context)}" data-industry="${escapeHtml(client.industries[0] || "")}" data-industry-list="${escapeHtml(client.industries.join("|"))}" data-search="${escapeHtml(searchable)}" onclick="SkillNestApp.openClientProfile('${client.id}')">
+        <div class="operator-row-avatar">${userAvatar(client, "avatar-xl")}</div>
+        <div class="operator-row-body">
+          <div class="operator-row-head">
             <div>
               <h3>${escapeHtml(client.name)}</h3>
-              <p class="hatcher-row-level">${escapeHtml(client.type)}${client.contact ? ` · ${escapeHtml(client.contact)}` : ""}</p>
+              <p class="operator-row-level">${escapeHtml(client.type)}${client.contact ? ` · ${escapeHtml(client.contact)}` : ""}</p>
             </div>
-            <button class="btn secondary small hatcher-message-btn" type="button" onclick="event.stopPropagation(); SkillNestApp.messageClient('${client.id}')">✉️ Message</button>
+            <button class="btn secondary small operator-message-btn" type="button" onclick="event.stopPropagation(); SkillNestApp.messageClient('${client.id}')">✉️ Message</button>
           </div>
-          <p class="hatcher-row-bio">${escapeHtml(client.bio)}</p>
+          <p class="operator-row-bio">${escapeHtml(client.bio)}</p>
           <div class="metric-grid compact-metric-grid">
             <div><strong>${client.posted}</strong><span>posted</span></div>
             <div><strong>${client.rating}</strong><span>rating</span></div>
@@ -2097,24 +2097,24 @@ window.SkillNestComponents = (() => {
   }
 
   function verifiedWorkCard(work) {
-    const profile = hatcherForWork(work);
+    const profile = operatorForWork(work);
     const canOpenProfile = Boolean(work.showProfile && profile);
-    const hatcherName = work.showProfile ? (profile?.name || work.hatcherName || "Private Hatcher") : "Private Hatcher";
-    const hatcherMeta = work.showProfile
-      ? (profile ? `${profile.level} · ${profile.specialization}` : (work.hatcherMeta || "Verified Hatcher"))
+    const operatorName = work.showProfile ? (profile?.name || work.operatorName || "Private Operator") : "Private Operator";
+    const operatorMeta = work.showProfile
+      ? (profile ? `${profile.level} · ${profile.specialization}` : (work.operatorMeta || "Verified Operator"))
       : "Profile hidden";
-    const initials = profile?.initials || work.hatcherInitials || "H";
+    const initials = profile?.initials || work.operatorInitials || "H";
     // Real, client-approved deliverables carry a submission — flag it so people
     // know the card opens to the actual work handed in, not just a summary.
     const hasDeliverable = Boolean(work.submission);
     return `
       <article class="verified-feed-item">
         <div class="verified-feed-head">
-          <button class="verified-hatcher-link" type="button" ${canOpenProfile ? `onclick="SkillNestApp.openVerifiedHatcherProfile('${profile.id}')"` : "disabled"} aria-label="View ${escapeHtml(hatcherName)} profile">
+          <button class="verified-operator-link" type="button" ${canOpenProfile ? `onclick="SkillNestApp.openVerifiedOperatorProfile('${profile.id}')"` : "disabled"} aria-label="View ${escapeHtml(operatorName)} profile">
             <div class="avatar small-avatar">${escapeHtml(initials)}</div>
           </button>
-          <button class="verified-hatcher-link verified-hatcher-name" type="button" ${canOpenProfile ? `onclick="SkillNestApp.openVerifiedHatcherProfile('${profile.id}')"` : "disabled"}>
-            <strong>${escapeHtml(hatcherName)}</strong>
+          <button class="verified-operator-link verified-operator-name" type="button" ${canOpenProfile ? `onclick="SkillNestApp.openVerifiedOperatorProfile('${profile.id}')"` : "disabled"}>
+            <strong>${escapeHtml(operatorName)}</strong>
             <span>${escapeHtml(work.completedAt)} · ${escapeHtml(work.industry)} · ${escapeHtml(work.level)}</span>
           </button>
           <span class="verified-status">Verified delivery</span>
@@ -2128,7 +2128,7 @@ window.SkillNestComponents = (() => {
           <span>${escapeHtml(visibleEarnings(work))}</span>
           <span>★★★★★ ${escapeHtml(work.rating)}</span>
         </div>
-        <p class="verified-feed-note">${escapeHtml(hatcherMeta)}${hasDeliverable ? ` <span class="verified-deliverable-flag">✓ Delivered result attached</span>` : ""}</p>
+        <p class="verified-feed-note">${escapeHtml(operatorMeta)}${hasDeliverable ? ` <span class="verified-deliverable-flag">✓ Delivered result attached</span>` : ""}</p>
         <div class="task-actions verified-feed-actions">
           <button class="btn secondary small" type="button" onclick="SkillNestApp.openVerifiedProject('${work.id}')">View Project</button>
           <button class="btn secondary small" type="button" onclick="SkillNestApp.shareVerifiedWork('${work.id}')">Share</button>
@@ -2151,7 +2151,7 @@ window.SkillNestComponents = (() => {
           ${completedHatches.slice(0, 3).map((work) => `
             <article>
               <strong>${escapeHtml(work.title)}</strong>
-              <span>${escapeHtml(visibleHatcherName(work))} · ${escapeHtml(visibleEarnings(work))} · ${escapeHtml(visibleCompletionTime(work))}</span>
+              <span>${escapeHtml(visibleOperatorName(work))} · ${escapeHtml(visibleEarnings(work))} · ${escapeHtml(visibleCompletionTime(work))}</span>
             </article>
           `).join("")}
         </div>
@@ -2159,7 +2159,7 @@ window.SkillNestComponents = (() => {
     `;
   }
 
-  // The delivered result the Hatcher actually handed in (submission message +
+  // The delivered result the Operator actually handed in (submission message +
   // links/files), shown on the verified project detail when a client chose to
   // publish it. Mirrors the attachment rendering used in reviewWorkModal.
   function verifiedDeliverableSection(submission) {
@@ -2167,7 +2167,7 @@ window.SkillNestComponents = (() => {
     const attachments = Array.isArray(submission.attachments) ? submission.attachments : [];
     return `
       <h2>Delivered result</h2>
-      <p>${escapeHtml(submission.message || "The Hatcher's delivered work was approved by the client.")}</p>
+      <p>${escapeHtml(submission.message || "The Operator's delivered work was approved by the client.")}</p>
       ${attachments.length ? `
         <div class="detail-file-list">
           ${attachments.map((item) => item.kind === "link" || (!item.objectUrl && item.url) ? `
@@ -2193,14 +2193,14 @@ window.SkillNestComponents = (() => {
   }
 
   function verifiedProjectDetail(work) {
-    const profile = hatcherForWork(work);
+    const profile = operatorForWork(work);
     const completedByName = work.showProfile
-      ? (profile?.name || work.hatcherName || "Completed by private Hatcher")
-      : "Completed by private Hatcher";
+      ? (profile?.name || work.operatorName || "Completed by private Operator")
+      : "Completed by private Operator";
     const completedByMeta = work.showProfile
-      ? (profile ? `${profile.level} · ${profile.specialization}` : (work.hatcherMeta || "Verified Hatcher"))
+      ? (profile ? `${profile.level} · ${profile.specialization}` : (work.operatorMeta || "Verified Operator"))
       : "Profile hidden for this completed Hatch";
-    const completedByInitials = profile?.initials || work.hatcherInitials || "H";
+    const completedByInitials = profile?.initials || work.operatorInitials || "H";
     return modal(`
       <div class="detail-head">
         <span class="level-ribbon">${escapeHtml(work.level)}</span>
@@ -2237,11 +2237,11 @@ window.SkillNestComponents = (() => {
           <p>${escapeHtml(completedByMeta)}</p>
         </div>
       </div>
-      ${work.showProfile && profile ? `<button class="btn primary full" type="button" onclick="SkillNestApp.openVerifiedHatcherProfile('${profile.id}')">View Hatcher Profile</button>` : ""}
+      ${work.showProfile && profile ? `<button class="btn primary full" type="button" onclick="SkillNestApp.openVerifiedOperatorProfile('${profile.id}')">View Operator Profile</button>` : ""}
     `);
   }
 
-  function verifiedHatcherProfile(profile) {
+  function verifiedOperatorProfile(profile) {
     const recent = completedHatches.filter((work) => profile.recentWorkIds.includes(work.id));
     return modal(`
       <div class="operator-head detail-operator-head">
@@ -2427,7 +2427,7 @@ window.SkillNestComponents = (() => {
         <h2>Missing information</h2>
         <ul class="missing-list">${missingInfo.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
       ` : ""}
-      <h2>Recommended Hatcher level</h2>
+      <h2>Recommended Operator level</h2>
       <p>${escapeHtml(levelReason(task.level, category))}</p>
       <h2>Files and references</h2>
       ${files.length || references.length ? `
@@ -2467,7 +2467,7 @@ window.SkillNestComponents = (() => {
     `);
   }
 
-  // Renders the list of files/links a Hatcher has staged for a submission.
+  // Renders the list of files/links an Operator has staged for a submission.
   // Used inside submitWorkModal and refreshed live as files are attached.
   function submissionAttachmentList(files = []) {
     if (!files.length) return `<p class="muted-text small">No files attached yet.</p>`;
@@ -2558,7 +2558,7 @@ window.SkillNestComponents = (() => {
           <p class="muted-text completion-note">This Hatch has been approved and is complete.</p>
         ` : `
           <label class="field">
-            <span>Feedback <span class="muted-text small">(optional — sent to the Hatcher)</span></span>
+            <span>Feedback <span class="muted-text small">(optional — sent to the Operator)</span></span>
             <textarea id="reviewFeedback" rows="3" placeholder="What looks good, or what needs changing?"></textarea>
           </label>
           <label class="review-publish-check">
@@ -2591,7 +2591,7 @@ window.SkillNestComponents = (() => {
       </div>
       <div class="tag-row">${operator.industries.map((item) => tag(item)).join("")}</div>
       <div class="task-actions modal-actions">
-        <button class="btn primary full" type="button" onclick="SkillNestApp.messageHatcher('${operator.id}')">✉️ Message <span data-no-i18n>${escapeHtml(operator.name)}</span></button>
+        <button class="btn primary full" type="button" onclick="SkillNestApp.messageOperator('${operator.id}')">✉️ Message <span data-no-i18n>${escapeHtml(operator.name)}</span></button>
       </div>
       <div class="operator-tabs">
         <button class="tab active" type="button" onclick="SkillNestApp.showOperatorTab(event, 'offers')">Offers</button>
@@ -2755,11 +2755,11 @@ window.SkillNestComponents = (() => {
 
   function footer(isLoggedIn, account = {}) {
     const profileLink = isLoggedIn ? `<a href="#profile">My Hatches</a>` : `<a href="#auth">Sign up / Log in</a>`;
-    // Hatchers already reach the levels/ranking content through "About Hatch"
+    // Operators already reach the levels/ranking content through "About Hatch"
     // below, so they don't get a second link to the same page under a
-    // different label — only non-Hatchers get the distinct "apply" CTA.
-    const isHatcher = isLoggedIn && /hatcher|operator/i.test(String(account.role || ""));
-    const hatcherLink = isHatcher ? "" : `<a href="#operator">Become a Hatcher</a>`;
+    // different label — only non-Operators get the distinct "apply" CTA.
+    const isOperator = isLoggedIn && /operator|operator/i.test(String(account.role || ""));
+    const operatorLink = isOperator ? "" : `<a href="#operator">Become an Operator</a>`;
     return `
       <footer class="footer">
         <div class="footer-inner">
@@ -2780,10 +2780,10 @@ window.SkillNestComponents = (() => {
             </button>
             <a href="#create-hatch" onclick="SkillNestApp.startNewHatch()">Post a Hatch</a>
             <a href="#browse">Browse Hatches</a>
-            <a href="#hatchers">Find Hatchers</a>
+            <a href="#operators">Find Operators</a>
             <a href="#clients">Browse Clients</a>
             <a href="#verified-work">Verified Results</a>
-            ${hatcherLink}
+            ${operatorLink}
             <a href="#about">About Hatch</a>
             ${profileLink}
             <a href="#terms">Terms &amp; Conditions</a>
@@ -2834,9 +2834,9 @@ window.SkillNestComponents = (() => {
     nav,
     statsBanner,
     nextClarification,
-    hatcherDirectoryCard,
-    hatcherLevelBucket,
-    hatcherMatchScore,
+    operatorDirectoryCard,
+    operatorLevelBucket,
+    operatorMatchScore,
     clientDirectoryCard,
     clientMatchScore,
     clientCard,
@@ -2862,7 +2862,7 @@ window.SkillNestComponents = (() => {
     taskReviewBriefMarkup,
     taskPreviewMarkup,
     textAreaField,
-    verifiedHatcherProfile,
+    verifiedOperatorProfile,
     verifiedProjectDetail,
     verifiedWorkCard,
   };
