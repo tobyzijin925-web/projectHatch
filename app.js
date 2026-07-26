@@ -5057,6 +5057,111 @@ window.SkillNestApp = (() => {
     openNewMessage("", backendId, known?.title || "");
   }
 
+  // ── New-message recipient typeahead ────────────────────────────────────────
+  // The composer autocompletes against the operator + client directory. Each
+  // person's id doubles as their messaging handle (same value the "Message X"
+  // buttons already send), so picking one just fills the "To" field with it.
+  function messageablePeople() {
+    const seen = new Set();
+    return [...operators, ...clients].filter((person) => {
+      if (!person || !person.id || seen.has(person.id)) return false;
+      seen.add(person.id);
+      return true;
+    });
+  }
+
+  // Rank matches: whole-name/handle prefix beats a word prefix beats a
+  // substring beats a tool match, so the closest names surface first.
+  function matchPeople(query, limit = 6) {
+    const needle = String(query || "").trim().toLowerCase().replace(/^@+/, "");
+    if (!needle) return [];
+    const scored = [];
+    for (const person of messageablePeople()) {
+      const name = String(person.name || "").toLowerCase();
+      const handle = String(person.id || "").toLowerCase();
+      const tools = (person.tools || []).join(" ").toLowerCase();
+      let score = 0;
+      if (handle.startsWith(needle) || name.startsWith(needle)) score = 4;
+      else if (name.split(/\s+/).some((word) => word.startsWith(needle))) score = 3;
+      else if (name.includes(needle) || handle.includes(needle)) score = 2;
+      else if (tools.includes(needle)) score = 1;
+      if (score > 0) scored.push({ person, score });
+    }
+    return scored
+      .sort((a, b) => b.score - a.score || String(a.person.name).localeCompare(String(b.person.name)))
+      .slice(0, limit)
+      .map((entry) => entry.person);
+  }
+
+  let recipientMatches = [];
+  let recipientActiveIndex = -1;
+
+  function hideRecipientMenu() {
+    const input = document.getElementById("newMessageTo");
+    const menu = document.getElementById("newMessageSuggestions");
+    if (menu) { menu.hidden = true; menu.innerHTML = ""; }
+    if (input) input.setAttribute("aria-expanded", "false");
+    recipientMatches = [];
+    recipientActiveIndex = -1;
+  }
+
+  function onRecipientInput() {
+    const input = document.getElementById("newMessageTo");
+    const menu = document.getElementById("newMessageSuggestions");
+    if (!input || !menu) return;
+    const matches = matchPeople(input.value, 6);
+    recipientMatches = matches;
+    recipientActiveIndex = -1;
+    if (!matches.length) { hideRecipientMenu(); return; }
+    menu.innerHTML = C.messageSuggestionList(matches);
+    menu.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+  }
+
+  function highlightRecipient(index) {
+    const menu = document.getElementById("newMessageSuggestions");
+    if (!menu) return;
+    const options = [...menu.querySelectorAll(".mention-option")];
+    options.forEach((el, i) => {
+      const on = i === index;
+      el.classList.toggle("active", on);
+      el.setAttribute("aria-selected", on ? "true" : "false");
+      if (on) el.scrollIntoView({ block: "nearest" });
+    });
+    recipientActiveIndex = index;
+  }
+
+  function onRecipientKeydown(event) {
+    const menu = document.getElementById("newMessageSuggestions");
+    const open = menu && !menu.hidden && recipientMatches.length;
+    if (!open) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      highlightRecipient((recipientActiveIndex + 1) % recipientMatches.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      highlightRecipient((recipientActiveIndex - 1 + recipientMatches.length) % recipientMatches.length);
+    } else if (event.key === "Enter" && recipientActiveIndex >= 0) {
+      event.preventDefault(); // choose the highlighted person instead of submitting
+      pickMessageRecipient(recipientMatches[recipientActiveIndex].id);
+    } else if (event.key === "Escape") {
+      hideRecipientMenu();
+    }
+  }
+
+  // Fires on blur; a row's cancelled mousedown keeps focus, so a click on a
+  // suggestion runs pickMessageRecipient before this can hide the menu.
+  function onRecipientBlur() {
+    hideRecipientMenu();
+  }
+
+  function pickMessageRecipient(id) {
+    const input = document.getElementById("newMessageTo");
+    if (input) input.value = id;
+    hideRecipientMenu();
+    document.getElementById("newMessageBody")?.focus();
+  }
+
   async function sendNewMessage(event) {
     event.preventDefault();
     const to = document.getElementById("newMessageTo")?.value.trim() || "";
@@ -5749,6 +5854,10 @@ window.SkillNestApp = (() => {
     openNewMessageForTask,
     openNewMessageForHatch,
     sendNewMessage,
+    onRecipientInput,
+    onRecipientKeydown,
+    onRecipientBlur,
+    pickMessageRecipient,
     archiveConversation,
     toggleProfileMenu,
     toggleLanguageMenu,

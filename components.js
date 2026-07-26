@@ -2740,6 +2740,25 @@ window.SkillNestComponents = (() => {
   // Compose modal for starting a conversation. Three shapes: blank (type a
   // username), recipient preset (from a "Message X" button), or hatch-only —
   // no recipient field at all, the server resolves the other party.
+  // Rows for the new-message recipient typeahead: a profile avatar, the
+  // person's name with their @handle, and the tools they use underneath.
+  // onmousedown is cancelled so clicking a row doesn't blur (and hide) the
+  // input before the click registers.
+  function messageSuggestionList(people = []) {
+    return people.map((person) => `
+      <button type="button" class="mention-option" role="option" aria-selected="false" data-id="${escapeHtml(person.id)}"
+        onmousedown="event.preventDefault()" onclick="SkillNestApp.pickMessageRecipient('${escapeHtml(person.id)}')">
+        <span class="mention-avatar" aria-hidden="true">${escapeHtml(person.initials || avatarInitials({ name: person.name }))}</span>
+        <span class="mention-body">
+          <span class="mention-name">${escapeHtml(person.name)}<span class="mention-handle">@${escapeHtml(person.id)}</span></span>
+          ${Array.isArray(person.tools) && person.tools.length
+            ? `<span class="mention-tools">${person.tools.slice(0, 4).map((tool) => `<span class="mention-tool">${escapeHtml(tool)}</span>`).join("")}</span>`
+            : ""}
+        </span>
+      </button>
+    `).join("");
+  }
+
   function newMessageModal(preset = {}) {
     const lockTo = Boolean(preset.to);
     const resolveFromHatch = Boolean(preset.hatchId && !preset.to);
@@ -2752,8 +2771,15 @@ window.SkillNestComponents = (() => {
           ? `<p class="new-message-note">To: the other person on this Hatch</p>`
           : `
             <label class="field">
-              <span>To${lockTo ? "" : " (username)"}</span>
-              <input id="newMessageTo" type="text" placeholder="username" value="${escapeHtml(preset.to || "")}" ${lockTo ? "readonly" : ""} required />
+              <span>To${lockTo ? "" : " (name or @username)"}</span>
+              <div class="mention-field">
+                <input id="newMessageTo" type="text" autocomplete="off"
+                  placeholder="${lockTo ? "username" : "Search by name or @username"}"
+                  value="${escapeHtml(preset.to || "")}" ${lockTo ? "readonly" : ""} required
+                  role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="newMessageSuggestions"
+                  ${lockTo ? "" : `oninput="SkillNestApp.onRecipientInput()" onkeydown="SkillNestApp.onRecipientKeydown(event)" onblur="SkillNestApp.onRecipientBlur()"`} />
+                <div class="mention-menu" id="newMessageSuggestions" role="listbox" hidden></div>
+              </div>
             </label>
           `}
         <label class="field full-field">
@@ -2855,6 +2881,7 @@ window.SkillNestComponents = (() => {
     taskLanguageState,
     messageBubble,
     newMessageModal,
+    messageSuggestionList,
     systemAvatar,
     userAvatar,
     assistantConversationMarkup,
