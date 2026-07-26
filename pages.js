@@ -488,6 +488,10 @@ window.SkillNestPages = (() => {
               ${C.selectField("I am joining as", "authRole", ["Client", "Hatcher", "Client and Hatcher"])}
             </div>
             ${signupLanguageSection()}
+            <label class="terms-check">
+              <input type="checkbox" id="authTerms" required />
+              <span>I have read and agree to Hatch's <a href="#terms" target="_blank" rel="noopener">Terms &amp; Conditions</a> and <a href="#privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+            </label>
             <button class="btn primary full" type="submit">Create account</button>
             <div class="auth-switch">
               <span>Already have an account?</span>
@@ -1265,6 +1269,79 @@ window.SkillNestPages = (() => {
     `;
   }
 
+  // Bumped when the legal text changes; recorded against each account at signup
+  // so consent is tied to the version the user actually saw.
+  const LEGAL_VERSION = "2026-07-26";
+  const LEGAL_EFFECTIVE = "July 26, 2026";
+
+  // Shell shared by the Terms and Privacy pages so both read like the rest of
+  // the site (section label, intro, "last updated") instead of a raw dump.
+  function legalPage({ label, title, intro, sections }) {
+    return `
+      <main>
+        <section class="section page legal-page">
+          <div class="section-label">${label}</div>
+          <h1>${title}</h1>
+          <p class="section-kicker legal-intro">${intro}</p>
+          <p class="legal-updated">Last updated: ${LEGAL_EFFECTIVE}</p>
+          <div class="legal-body">
+            ${sections.map(([heading, ...paras], index) => `
+              <section class="legal-section">
+                <h2>${index + 1}. ${heading}</h2>
+                ${paras.map((p) => `<p>${p}</p>`).join("")}
+              </section>
+            `).join("")}
+          </div>
+          <p class="form-note legal-disclaimer">Hatch is an MVP preview. This document is a plain-language template for the prototype and is not legal advice. Questions? Email <a href="mailto:hello@hatch.example">hello@hatch.example</a>.</p>
+        </section>
+      </main>
+    `;
+  }
+
+  function termsPage() {
+    return legalPage({
+      label: "Legal",
+      title: "Terms & Conditions.",
+      intro: "These terms are the agreement between you and Hatch when you create an account, post a Hatch, or deliver work as a Hatcher. By using Hatch you accept them.",
+      sections: [
+        ["Accepting these terms", "By creating an account or otherwise using Hatch, you confirm that you have read, understood, and agree to be bound by these Terms & Conditions and our Privacy Policy. If you do not agree, please do not use the platform."],
+        ["Who can use Hatch", "You must be at least 18 years old and able to enter into a binding contract. When you sign up as a business or on behalf of one, you confirm you are authorized to accept these terms for that business."],
+        ["Your account", "You are responsible for keeping your login details secure and for everything that happens under your account. Give us accurate information when you sign up and keep it current. Tell us promptly if you suspect any unauthorized use."],
+        ["How Hatch works", "Hatch is a marketplace. Clients post Hatches — scoped pieces of business work — and verified Hatchers deliver them. Hatch provides the platform, the AI intake assistant, and the tools that connect the two sides. Hatch is not a party to the agreement between a client and a Hatcher, does not perform the work itself, and does not employ Hatchers."],
+        ["Posting and claiming Hatches", "Clients are responsible for describing work accurately and setting a fair budget and timeline. Hatchers are responsible for delivering what was agreed, on time, and to a professional standard. Once a Hatcher claims a Hatch, both sides are expected to see it through the review process in good faith."],
+        ["Payments", "Budgets are agreed between the client and the Hatcher at the point of posting and claiming. In this MVP preview no real payments are processed. When payments launch, applicable fees, payout timing, and refund rules will be disclosed before you are charged, and will form part of these terms."],
+        ["Content and intellectual property", "You keep ownership of the content and materials you upload. You grant Hatch a limited license to store, display, and process that content only as needed to run the platform. Unless a client and Hatcher agree otherwise in writing, ownership of delivered work transfers to the client once the Hatch is approved and any agreed payment is made."],
+        ["Acceptable use", "Do not use Hatch to post illegal, infringing, deceptive, or harmful work; to harass or defraud others; to bypass the platform to avoid fees; to scrape or overload the service; or to misrepresent your identity, skills, or verification status. We may remove content or suspend accounts that break these rules."],
+        ["Disputes between users", "If a Hatch does not go as planned, use the built-in review and dispute tools first — a client can request changes before approving, and either side can open a dispute. Hatch may help mediate but is not obligated to resolve disputes and is not responsible for the outcome of work delivered by Hatchers."],
+        ["Disclaimers", "Hatch is provided \"as is\" and \"as available.\" We do not guarantee that Hatchers will meet your expectations, that Hatches will be claimed, or that the service will be uninterrupted or error-free. AI-generated briefs and suggestions are aids, not guarantees, and should be reviewed before you rely on them."],
+        ["Limitation of liability", "To the fullest extent permitted by law, Hatch is not liable for indirect, incidental, or consequential damages, or for the acts, omissions, or work quality of any client or Hatcher. Our total liability for any claim relating to the service is limited to the fees you paid to Hatch in the three months before the claim arose."],
+        ["Suspension and termination", "You may close your account at any time. We may suspend or terminate access if you breach these terms or use the platform in a way that harms other users or Hatch. Sections that by their nature should survive termination — such as content licenses granted, disclaimers, and liability limits — will continue to apply."],
+        ["Changes to these terms", "We may update these terms as Hatch evolves. When we make material changes we will update the date above and, where appropriate, notify you. Continuing to use Hatch after changes take effect means you accept the updated terms."],
+        ["Contact", "Questions about these terms can be sent to hello@hatch.example."],
+      ],
+    });
+  }
+
+  function privacyPage() {
+    return legalPage({
+      label: "Legal",
+      title: "Privacy Policy.",
+      intro: "This policy explains what information Hatch collects, how we use it, and the choices you have. We aim to collect only what we need to run the platform.",
+      sections: [
+        ["Information you give us", "When you sign up we collect your username, name, email, chosen role, language preferences, and password. When you post or deliver a Hatch we collect the briefs, messages, files, and results you submit."],
+        ["Information collected automatically", "To run the app in your browser we store data locally on your device — including your session, draft Hatches, and appearance settings — and basic technical information needed to keep you signed in and the service working."],
+        ["How we use your information", "We use your information to create and secure your account, match clients with Hatchers, power the AI intake assistant, deliver messages, show your track record, and improve the platform. We do not sell your personal information."],
+        ["When we share information", "Parts of your profile and the Hatches you post or complete are visible to other users so the marketplace can function. Verified results are shared publicly only when you choose to publish them. We may share data with service providers who help us operate Hatch, or when required by law."],
+        ["Local storage and cookies", "Hatch stores information in your browser's local storage to keep you signed in and remember your preferences. Clearing your browser storage will sign you out and remove locally saved drafts and settings."],
+        ["Data retention", "We keep your information for as long as your account is active or as needed to provide the service and meet legal obligations. You can ask us to delete your account and associated personal data."],
+        ["Your choices", "You can review and update your account details and language preferences in settings at any time, and you can request access to or deletion of your personal data by contacting us."],
+        ["Children's privacy", "Hatch is not intended for anyone under 18, and we do not knowingly collect information from children."],
+        ["Changes to this policy", "We may update this policy as the platform changes. When we do, we will revise the date above and, for material changes, take reasonable steps to let you know."],
+        ["Contact", "For any privacy question or request, email hello@hatch.example."],
+      ],
+    });
+  }
+
   return {
     aboutPage,
     authPage,
@@ -1277,10 +1354,13 @@ window.SkillNestPages = (() => {
     operatorPage,
     hatchReviewPage,
     createHatchPage,
+    privacyPage,
     profilePage,
     settingsPage,
     signupPage,
     taskReviewPage,
+    termsPage,
     verifiedWorkPage,
+    LEGAL_VERSION,
   };
 })();

@@ -3792,6 +3792,13 @@ window.SkillNestApp = (() => {
 
   async function completeSignup(event) {
     event.preventDefault();
+    // The checkbox is `required`, so the browser normally blocks submit before
+    // we get here — but guard anyway in case the field is ever bypassed.
+    const termsBox = document.getElementById("authTerms");
+    if (termsBox && !termsBox.checked) {
+      termsBox.reportValidity?.();
+      return;
+    }
     const account = {
       username: document.getElementById("authUsername").value.trim(),
       name: document.getElementById("authName").value.trim(),
@@ -3799,6 +3806,9 @@ window.SkillNestApp = (() => {
       password: document.getElementById("authPassword").value,
       role: document.getElementById("authRole").value,
       joinedAt: new Date().toISOString(),
+      // Record consent so it's tied to the version of the terms shown at signup.
+      acceptedTermsAt: new Date().toISOString(),
+      termsVersion: Pages.LEGAL_VERSION,
     };
 
     // Language preferences chosen during setup, stored on the account so they
@@ -5519,6 +5529,10 @@ window.SkillNestApp = (() => {
         ? Pages.findHatchersPage(operators, hatcherRecommendationContext())
       : route === "clients"
         ? Pages.findClientsPage(clients, clientRecommendationContext())
+      : route === "terms"
+        ? Pages.termsPage()
+      : route === "privacy"
+        ? Pages.privacyPage()
       : route === "verified-work"
         ? Pages.verifiedWorkPage(getPublishedResults())
       : route === "messages"

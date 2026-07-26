@@ -2786,6 +2786,8 @@ window.SkillNestComponents = (() => {
             ${hatcherLink}
             <a href="#about">About Hatch</a>
             ${profileLink}
+            <a href="#terms">Terms &amp; Conditions</a>
+            <a href="#privacy">Privacy Policy</a>
           </div>
         </div>
         <div class="footer-bottom">
