@@ -58,8 +58,10 @@ window.SkillNestComponents = (() => {
 
   function visibleHatcherName(work) {
     const profile = hatcherForWork(work);
-    if (!work.showProfile || !profile) return "Private Hatcher";
-    return profile.name;
+    if (!work.showProfile) return "Private Hatcher";
+    // Published results (from a real client review) carry a plain hatcherName
+    // instead of a seeded hatcherProfiles entry, so fall back to that.
+    return profile?.name || work.hatcherName || "Private Hatcher";
   }
 
   function visibleEarnings(work) {
@@ -2096,15 +2098,22 @@ window.SkillNestComponents = (() => {
 
   function verifiedWorkCard(work) {
     const profile = hatcherForWork(work);
-    const hatcherName = work.showProfile && profile ? profile.name : "Private Hatcher";
-    const hatcherMeta = work.showProfile && profile ? `${profile.level} · ${profile.specialization}` : "Profile hidden";
+    const canOpenProfile = Boolean(work.showProfile && profile);
+    const hatcherName = work.showProfile ? (profile?.name || work.hatcherName || "Private Hatcher") : "Private Hatcher";
+    const hatcherMeta = work.showProfile
+      ? (profile ? `${profile.level} · ${profile.specialization}` : (work.hatcherMeta || "Verified Hatcher"))
+      : "Profile hidden";
+    const initials = profile?.initials || work.hatcherInitials || "H";
+    // Real, client-approved deliverables carry a submission — flag it so people
+    // know the card opens to the actual work handed in, not just a summary.
+    const hasDeliverable = Boolean(work.submission);
     return `
       <article class="verified-feed-item">
         <div class="verified-feed-head">
-          <button class="verified-hatcher-link" type="button" ${work.showProfile && profile ? `onclick="SkillNestApp.openVerifiedHatcherProfile('${profile.id}')"` : "disabled"} aria-label="View ${escapeHtml(hatcherName)} profile">
-            <div class="avatar small-avatar">${escapeHtml(profile?.initials || "H")}</div>
+          <button class="verified-hatcher-link" type="button" ${canOpenProfile ? `onclick="SkillNestApp.openVerifiedHatcherProfile('${profile.id}')"` : "disabled"} aria-label="View ${escapeHtml(hatcherName)} profile">
+            <div class="avatar small-avatar">${escapeHtml(initials)}</div>
           </button>
-          <button class="verified-hatcher-link verified-hatcher-name" type="button" ${work.showProfile && profile ? `onclick="SkillNestApp.openVerifiedHatcherProfile('${profile.id}')"` : "disabled"}>
+          <button class="verified-hatcher-link verified-hatcher-name" type="button" ${canOpenProfile ? `onclick="SkillNestApp.openVerifiedHatcherProfile('${profile.id}')"` : "disabled"}>
             <strong>${escapeHtml(hatcherName)}</strong>
             <span>${escapeHtml(work.completedAt)} · ${escapeHtml(work.industry)} · ${escapeHtml(work.level)}</span>
           </button>
@@ -2119,7 +2128,7 @@ window.SkillNestComponents = (() => {
           <span>${escapeHtml(visibleEarnings(work))}</span>
           <span>★★★★★ ${escapeHtml(work.rating)}</span>
         </div>
-        <p class="verified-feed-note">${escapeHtml(hatcherMeta)}</p>
+        <p class="verified-feed-note">${escapeHtml(hatcherMeta)}${hasDeliverable ? ` <span class="verified-deliverable-flag">✓ Delivered result attached</span>` : ""}</p>
         <div class="task-actions verified-feed-actions">
           <button class="btn secondary small" type="button" onclick="SkillNestApp.openVerifiedProject('${work.id}')">View Project</button>
           <button class="btn secondary small" type="button" onclick="SkillNestApp.shareVerifiedWork('${work.id}')">Share</button>
@@ -2150,12 +2159,52 @@ window.SkillNestComponents = (() => {
     `;
   }
 
+  // The delivered result the Hatcher actually handed in (submission message +
+  // links/files), shown on the verified project detail when a client chose to
+  // publish it. Mirrors the attachment rendering used in reviewWorkModal.
+  function verifiedDeliverableSection(submission) {
+    if (!submission) return "";
+    const attachments = Array.isArray(submission.attachments) ? submission.attachments : [];
+    return `
+      <h2>Delivered result</h2>
+      <p>${escapeHtml(submission.message || "The Hatcher's delivered work was approved by the client.")}</p>
+      ${attachments.length ? `
+        <div class="detail-file-list">
+          ${attachments.map((item) => item.kind === "link" || (!item.objectUrl && item.url) ? `
+            <article>
+              <strong>${escapeHtml(item.name || item.url || "Link")}</strong>
+              <span>Link</span>
+              <div class="detail-file-actions">
+                <a class="btn ghost small" href="${escapeHtml(item.url || item.name)}" target="_blank" rel="noopener">Open</a>
+              </div>
+            </article>
+          ` : `
+            <article>
+              <strong>${escapeHtml(item.name || "File")}</strong>
+              <span>${escapeHtml(item.type || "file")}${item.size ? ` · ${Math.ceil(item.size / 1024)} KB` : ""}</span>
+              <div class="detail-file-actions">
+                ${item.objectUrl ? `<a class="btn ghost small" href="${escapeHtml(item.objectUrl)}" download="${escapeHtml(item.name || "file")}">Download</a>` : `<span class="file-unavailable">Preview unavailable</span>`}
+              </div>
+            </article>
+          `).join("")}
+        </div>
+      ` : `<p class="muted-text">No files or links were attached.</p>`}
+    `;
+  }
+
   function verifiedProjectDetail(work) {
     const profile = hatcherForWork(work);
+    const completedByName = work.showProfile
+      ? (profile?.name || work.hatcherName || "Completed by private Hatcher")
+      : "Completed by private Hatcher";
+    const completedByMeta = work.showProfile
+      ? (profile ? `${profile.level} · ${profile.specialization}` : (work.hatcherMeta || "Verified Hatcher"))
+      : "Profile hidden for this completed Hatch";
+    const completedByInitials = profile?.initials || work.hatcherInitials || "H";
     return modal(`
       <div class="detail-head">
         <span class="level-ribbon">${escapeHtml(work.level)}</span>
-        ${work.verifiedBadges.map((badge) => tag(badge, "verified-tag")).join("")}
+        ${(work.verifiedBadges || []).map((badge) => tag(badge, "verified-tag")).join("")}
       </div>
       <h1>${escapeHtml(work.title)}</h1>
       <strong class="detail-budget">${escapeHtml(visibleEarnings(work))}</strong>
@@ -2169,18 +2218,23 @@ window.SkillNestComponents = (() => {
       <p>${escapeHtml(work.clientContext)}</p>
       <h2>Objective</h2>
       <p>${escapeHtml(work.objective)}</p>
-      <h2>Scope of work</h2>
-      <ul class="clean-list">${work.scope.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-      <h2>Deliverables</h2>
-      <ul class="clean-list checklist-list">${work.deliverables.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      ${work.scope?.length ? `
+        <h2>Scope of work</h2>
+        <ul class="clean-list">${work.scope.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      ` : ""}
+      ${work.deliverables?.length ? `
+        <h2>Deliverables</h2>
+        <ul class="clean-list checklist-list">${work.deliverables.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      ` : ""}
+      ${verifiedDeliverableSection(work.submission)}
       <h2>Outcome</h2>
       <p>${escapeHtml(work.outcome)}</p>
       <h2>Completed by</h2>
       <div class="completed-by detail-completed-by">
-        <div class="avatar">${escapeHtml(profile?.initials || "H")}</div>
+        <div class="avatar">${escapeHtml(completedByInitials)}</div>
         <div>
-          <strong>${escapeHtml(work.showProfile && profile ? profile.name : "Completed by private Hatcher")}</strong>
-          <p>${escapeHtml(work.showProfile && profile ? `${profile.level} · ${profile.specialization}` : "Profile hidden for this completed Hatch")}</p>
+          <strong>${escapeHtml(completedByName)}</strong>
+          <p>${escapeHtml(completedByMeta)}</p>
         </div>
       </div>
       ${work.showProfile && profile ? `<button class="btn primary full" type="button" onclick="SkillNestApp.openVerifiedHatcherProfile('${profile.id}')">View Hatcher Profile</button>` : ""}
@@ -2506,6 +2560,10 @@ window.SkillNestComponents = (() => {
           <label class="field">
             <span>Feedback <span class="muted-text small">(optional — sent to the Hatcher)</span></span>
             <textarea id="reviewFeedback" rows="3" placeholder="What looks good, or what needs changing?"></textarea>
+          </label>
+          <label class="review-publish-check">
+            <input type="checkbox" id="reviewPublish" checked />
+            <span>Add to <strong>Verified Results</strong> — let people see this project and the delivered result. <span class="muted-text small">(only applies when you approve)</span></span>
           </label>
           <div class="task-actions modal-actions">
             <button class="btn secondary full" type="button" onclick="SkillNestApp.reviewWork('${task.id}', 'reject')">Request changes</button>

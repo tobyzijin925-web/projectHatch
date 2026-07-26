@@ -4407,6 +4407,9 @@ window.SkillNestApp = (() => {
     if (!task) return;
     const feedback = (document.getElementById("reviewFeedback")?.value || "").trim();
     const approving = decision === "approve";
+    // Opt-in from the review modal: publish the finished project + delivered
+    // result to Verified Results. Only meaningful on approval.
+    const publishToVerified = approving && document.getElementById("reviewPublish")?.checked;
 
     if (task.backendId && backendToken()) {
       const result = await backendFetch(`/api/hatches/${encodeURIComponent(task.backendId)}/review`, {
@@ -4437,12 +4440,71 @@ window.SkillNestApp = (() => {
       localStorage.setItem(missionsKey(), JSON.stringify(missions));
     }
 
+    if (publishToVerified) publishVerifiedResult(task, reviewedSubmission);
+
     localStorage.setItem("hatchProfileNotice", approving
-      ? "Submission approved. This Hatch is now Hatched."
+      ? (publishToVerified
+        ? "Submission approved. This Hatch is now Hatched and published to Verified Results."
+        : "Submission approved. This Hatch is now Hatched.")
       : "Changes requested. The Hatcher has been asked to revise.");
     closeModal();
     refreshConversations();
     render();
+  }
+
+  // Reads the client-published completed Hatches shown on the Verified Results
+  // page (newest first). Separate from the seeded completedHatches demo data.
+  function getPublishedResults() {
+    return readJson("hatchPublishedResults", []);
+  }
+
+  // Turns an approved task + its submission into a Verified Results record so
+  // visitors can see the project and exactly what the Hatcher handed in. Shaped
+  // to render through the same verifiedWorkCard / verifiedProjectDetail as the
+  // seed data, but carries a plain hatcherName (no seeded profile) plus the
+  // delivered submission (message + attachments).
+  function publishVerifiedResult(task, submission) {
+    const account = getAccount();
+    const hatcherName = account.name || account.username || "Hatcher";
+    const initials = hatcherName
+      .split(/\s+/)
+      .map((word) => word[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "H";
+    const level = task.level || "L1";
+    const industry = task.industry || task.category || "General";
+    const record = {
+      id: `published-${task.backendId || task.id}`,
+      title: task.title || "Completed Hatch",
+      clientContext: task.business ? `Delivered for ${task.business}.` : (task.summary || task.objective || "Client-approved delivery."),
+      objective: task.objective || task.summary || "Deliver a clear, usable result for the client.",
+      scope: Array.isArray(task.scope) ? task.scope : [],
+      deliverables: Array.isArray(task.deliverables) ? task.deliverables : [],
+      industry,
+      category: task.category || industry,
+      level,
+      amountEarned: task.budget || "—",
+      completionTime: "on schedule",
+      rating: "New",
+      outcome: submission?.message || "Delivered work approved by the client.",
+      completedAt: new Date().toISOString().slice(0, 10),
+      verifiedBadges: ["Client accepted", "Completed"],
+      hatcherId: null,
+      hatcherName,
+      hatcherInitials: initials,
+      hatcherMeta: `${level} · ${industry}`,
+      showProfile: true,
+      showEarnings: Boolean(task.budget),
+      showCompletionTime: true,
+      published: true,
+      submission: submission
+        ? { message: submission.message || "", attachments: Array.isArray(submission.attachments) ? submission.attachments : [] }
+        : null,
+    };
+    const list = getPublishedResults().filter((item) => item.id !== record.id);
+    list.unshift(record);
+    localStorage.setItem("hatchPublishedResults", JSON.stringify(list));
   }
 
   function deletePostedTask(identifier) {
@@ -5331,8 +5393,15 @@ window.SkillNestApp = (() => {
     if (operator) openModal(C.operatorDetail(operator));
   }
 
+  // Verified Results shown on the page are the client-published records first,
+  // then the seeded demo Hatches — so look in both when opening or sharing one.
+  function findVerifiedWork(workId) {
+    return getPublishedResults().find((item) => item.id === workId)
+      || completedHatches.find((item) => item.id === workId);
+  }
+
   function openVerifiedProject(workId) {
-    const work = completedHatches.find((item) => item.id === workId);
+    const work = findVerifiedWork(workId);
     if (work) openModal(C.verifiedProjectDetail(work));
   }
 
@@ -5356,7 +5425,7 @@ window.SkillNestApp = (() => {
   }
 
   async function shareVerifiedWork(workId) {
-    const work = completedHatches.find((item) => item.id === workId);
+    const work = findVerifiedWork(workId);
     if (!work) return;
 
     const shareUrl = `${window.location.origin}${window.location.pathname}#verified-work`;
@@ -5451,7 +5520,7 @@ window.SkillNestApp = (() => {
       : route === "clients"
         ? Pages.findClientsPage(clients, clientRecommendationContext())
       : route === "verified-work"
-        ? Pages.verifiedWorkPage()
+        ? Pages.verifiedWorkPage(getPublishedResults())
       : route === "messages"
         ? (isLoggedIn()
           ? Pages.messagesPage(account, {

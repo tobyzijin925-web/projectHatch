@@ -1303,6 +1303,40 @@ html.dark-mode .typewriter-pill {
   font-weight: 900;
 }
 
+/* "✓ Delivered result attached" marker on published Verified Results cards. */
+.verified-deliverable-flag {
+  display: inline-block;
+  margin-left: 6px;
+  color: var(--accent-dark);
+  font-size: 0.82rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+/* Opt-in publish checkbox in the review-work modal. */
+.review-publish-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 4px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: rgba(var(--surface-rgb), 0.6);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.review-publish-check input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--accent-dark);
+  cursor: pointer;
+}
+
 .verified-feed-meta {
   display: flex;
   flex-wrap: wrap;

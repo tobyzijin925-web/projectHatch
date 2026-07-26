@@ -371,8 +371,11 @@ window.SkillNestPages = (() => {
     `;
   }
 
-  function verifiedWorkPage() {
-    const orderedWork = [...completedHatches].sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+  function verifiedWorkPage(publishedResults = []) {
+    // Client-published results (from real, approved reviews) sit alongside the
+    // seeded demo Hatches; both share the same card and sort newest-first.
+    const orderedWork = [...publishedResults, ...completedHatches]
+      .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
     return `
       <main>
         <section class="section page page-intro verified-work-intro">
