@@ -1291,7 +1291,7 @@ window.SkillNestComponents = (() => {
   function aiDebugPanelMarkup(state = {}) {
     const fallbackUsed = state.fallbackUsed === true || state.lastAssistantSource === "local-fallback";
     const provider = fallbackUsed ? "Local fallback" : (state.lastProvider || "DeepSeek");
-    const model = state.lastModel || "deepseek-chat";
+    const model = state.lastModel || "deepseek-v4-flash";
     const raw = state.lastRawResponse || "";
     return `
       <details class="ai-debug-panel" ${fallbackUsed ? "open" : ""}>

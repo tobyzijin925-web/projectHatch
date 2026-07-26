@@ -31,7 +31,7 @@ const model = process.env.AI_MODEL
   || process.env.DEEPSEEK_MODEL
   || process.env.GROQ_MODEL
   || process.env.OPENAI_MODEL
-  || { deepseek: "deepseek-chat", groq: "llama-3.3-70b-versatile" }[provider]
+  || { deepseek: "deepseek-v4-flash", groq: "llama-3.3-70b-versatile" }[provider]
   || "gpt-4o-mini";
 const apiKey = { deepseek: process.env.DEEPSEEK_API_KEY, groq: process.env.GROQ_API_KEY }[provider]
   || process.env.OPENAI_API_KEY
