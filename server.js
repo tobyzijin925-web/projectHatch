@@ -23,7 +23,10 @@ loadLocalEnv();
 
 const hatchApi = require("./hatchApi");
 
-const host = process.env.HOST || "127.0.0.1";
+// Bind to 0.0.0.0 by default so hosted platforms (Render, etc.) can route to
+// the service — a 127.0.0.1 bind is only reachable from inside the container,
+// which reads to the platform as "no open ports". Override with HOST if needed.
+const host = process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 8132);
 const provider = (process.env.AI_PROVIDER
   || (process.env.DEEPSEEK_API_KEY ? "deepseek" : process.env.GROQ_API_KEY ? "groq" : "openai")).toLowerCase();
@@ -777,6 +780,14 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Lightweight liveness probe for the host platform's health check. Kept
+  // dependency-free (no DB/AI touch) so it stays fast and can't flap.
+  if (req.method === "GET" && (req.url === "/healthz" || req.url === "/healthz/")) {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("ok");
+    return;
+  }
+
   if (req.method === "GET" && req.url.startsWith("/api/ai-status")) {
     const force = /[?&]force=1\b/.test(req.url);
     validateApiKey({ force }).then((keyCheck) => {
@@ -811,6 +822,13 @@ const server = http.createServer((req, res) => {
   if (hatchApi.handle(req, res)) return;
 
   serveStatic(req, res);
+});
+
+server.on("error", (err) => {
+  // Surface a clear reason and exit non-zero so the platform restarts/redeploys
+  // instead of leaving a half-dead process (e.g. the port was already taken).
+  console.error(`Server failed to start on ${host}:${port} — ${err.message}`);
+  process.exit(1);
 });
 
 server.listen(port, host, () => {

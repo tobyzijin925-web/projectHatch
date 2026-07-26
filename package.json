@@ -5,7 +5,7 @@
   "description": "Hatch - AI-assisted marketplace MVP prototype",
   "main": "server.js",
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=23.4.0"
   },
   "scripts": {
     "start": "node server.js",

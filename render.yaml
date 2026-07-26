@@ -1,0 +1,36 @@
+# Render Blueprint for Hatch. Commit this file, then in Render:
+#   New → Blueprint → point it at this repo.
+# Secrets (sync: false) are NOT stored here — set them in the Render dashboard.
+services:
+  - type: web
+    name: hatch
+    runtime: node
+    # Persistent disks require a paid instance type (free tier has none and
+    # spins down). "starter" is the cheapest that supports a disk.
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    # Node's built-in node:sqlite runs flag-free from Node 23.4+; pinned via
+    # the committed .node-version file (24).
+    envVars:
+      # The code already defaults host to 0.0.0.0; set explicitly for clarity.
+      - key: HOST
+        value: 0.0.0.0
+      # Point the SQLite file at the mounted disk so data survives deploys.
+      - key: HATCH_DB_PATH
+        value: /var/data/hatch.db
+      # Admin = first account to sign up with one of these emails. Set BEFORE
+      # your first signup. Value entered in the dashboard (kept out of git).
+      - key: HATCH_ADMIN_EMAILS
+        sync: false
+      # AI intake key. Without it the server still boots in fallback mode.
+      # For Groq instead, add GROQ_API_KEY and AI_PROVIDER=groq in the dashboard.
+      - key: DEEPSEEK_API_KEY
+        sync: false
+    # PORT is injected by Render automatically — do not set it here.
+    disk:
+      name: hatch-data
+      mountPath: /var/data
+      sizeGB: 1
