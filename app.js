@@ -3,8 +3,8 @@ Object.assign(window.SkillNestApp, (() => {
   const { operators, clients, completedHatches, operatorProfiles } = window.SkillNestData;
   const C = window.SkillNestComponents;
   const Pages = window.SkillNestPages;
-  // Provided by app/theme-language.js and app/backend-client.js, both loaded
-  // just before this file.
+  // Provided by app/theme-language.js, app/backend-client.js, and
+  // app/task-store.js, all loaded just before this file.
   const {
     currentRoute, setRoute, applyDarkModePreference, toggleDarkMode, toggleLanguageMenu,
     closeLanguageMenu, toggleBrowseMenu, closeBrowseMenu, chooseLanguage, showLanguageGate,
@@ -15,6 +15,7 @@ Object.assign(window.SkillNestApp, (() => {
     postedTasksKey, missionsKey, getMissions, getPostedTasks, hydrateSessionFiles,
     marketplaceTasks, getRemoteOpenHatches, normalizeRemoteHatch, browsableTasks,
     getOperatorApplications, isLoggedIn,
+    trySetLocalStorage, saveListItem, saveDraftTask, getGeneratedBrief, operatorRecommendationContext,
   } = window.SkillNestApp;
   let voiceRecognition = null;
   let isVoiceListening = false;
@@ -28,52 +29,6 @@ Object.assign(window.SkillNestApp, (() => {
   // Now that attached files carry real base64 content instead of a tiny
   // blob-URL pointer, a write can legitimately fail — catch that instead of
   // letting a QuotaExceededError abort the caller mid-flow.
-  function trySetLocalStorage(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  function saveListItem(key, item, matchKey = "title") {
-    const list = readJson(key, []);
-    const index = list.findIndex((existing) => existing[matchKey] === item[matchKey]);
-    if (index >= 0) list[index] = { ...list[index], ...item };
-    else list.unshift(item);
-    return trySetLocalStorage(key, list);
-  }
-
-  function saveDraftTask() {
-    const prompt = document.getElementById("taskPrompt");
-    if (prompt) localStorage.setItem("skillnestDraftTask", prompt.value.trim());
-  }
-
-  function getGeneratedBrief() {
-    const brief = readJson("skillnestGeneratedBrief", null);
-    // Defend every "confidence < 40 = invalid" check against a brief that was
-    // stored on a 0-1 scale (older build, or a model reply mid-conversation):
-    // normalize to 0-100 on read so a resumed conversation can't be misread as
-    // invalid_input. Idempotent for values already on the 0-100 scale.
-    if (brief && brief.confidence != null) {
-      brief.confidence = normalizeConfidence(brief.confidence, brief.isValidProject ? 72 : 0);
-    }
-    return brief;
-  }
-
-  // What to personalize the Operator recommendations around: the industry of
-  // whatever project the visitor is currently working on, falling back to
-  // their most recently posted Hatch. Empty when neither exists — the
-  // recommendation algorithm still ranks by quality, just without a match boost.
-  function operatorRecommendationContext() {
-    const brief = getGeneratedBrief();
-    if (brief?.industry && brief.industry !== "General business") return { industry: brief.industry };
-    const [latestPosted] = getPostedTasks();
-    if (latestPosted?.industry) return { industry: latestPosted.industry };
-    return {};
-  }
-
   function getAssistantMessages() {
     return readJson("hatchAssistantMessages", []);
   }
@@ -5346,6 +5301,7 @@ Object.assign(window.SkillNestApp, (() => {
   window.addEventListener("hashchange", render);
 
   return {
+    normalizeConfidence,
     applyTaskFilters,
     applyOperatorFilters,
     applyClientFilters,
