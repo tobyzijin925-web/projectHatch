@@ -105,6 +105,43 @@ function sendJson(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
+// ── Rate limiting for the AI endpoints ──────────────────────────────────────
+// /api/project-intake, /api/project-assistant, and /api/translate are reachable
+// without signing in (the intake flow is meant to work before a client has an
+// account) and each call is a paid third-party API request. Without a cap here,
+// a script hitting these routes in a loop is an open-ended billing risk.
+// This is intentionally simple — in-memory, single-process, per-IP sliding
+// window — enough to blunt casual/scripted abuse. It resets on restart and
+// doesn't share state across instances; if this ever needs to run on more
+// than one instance, move it to something shared (e.g. the database).
+const AI_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const AI_RATE_LIMIT_MAX = 30;
+const aiRateLimitHits = new Map(); // ip -> timestamps within the current window
+
+function clientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded) return forwarded.split(",")[0].trim();
+  return req.socket.remoteAddress || "unknown";
+}
+
+function isAiRateLimited(req) {
+  const ip = clientIp(req);
+  const now = Date.now();
+  const hits = (aiRateLimitHits.get(ip) || []).filter((t) => now - t < AI_RATE_LIMIT_WINDOW_MS);
+  hits.push(now);
+  aiRateLimitHits.set(ip, hits);
+  return hits.length > AI_RATE_LIMIT_MAX;
+}
+
+// Periodically drop IPs with no hits left in the window so long-running
+// processes don't accumulate one entry per visitor ever seen.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, hits] of aiRateLimitHits) {
+    if (!hits.some((t) => now - t < AI_RATE_LIMIT_WINDOW_MS)) aiRateLimitHits.delete(ip);
+  }
+}, AI_RATE_LIMIT_WINDOW_MS).unref();
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -802,6 +839,13 @@ const server = http.createServer((req, res) => {
       });
     });
     return;
+  }
+
+  if (req.method === "POST" && (req.url === "/api/project-intake" || req.url === "/api/project-assistant" || req.url === "/api/translate")) {
+    if (isAiRateLimited(req)) {
+      sendJson(res, 429, { ok: false, error: "Too many AI requests from this address. Please wait a few minutes and try again." });
+      return;
+    }
   }
 
   if (req.method === "POST" && req.url === "/api/project-intake") {
