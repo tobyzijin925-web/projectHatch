@@ -243,6 +243,12 @@ addColumnIfMissing("hatcher_applications", "resume_name", "TEXT NOT NULL DEFAULT
 addColumnIfMissing("hatcher_applications", "resume_data", "TEXT NOT NULL DEFAULT ''");
 // Profile picture as a data: URL; empty = fall back to an initials avatar.
 addColumnIfMissing("users", "avatar_data", "TEXT NOT NULL DEFAULT ''");
+// Set once, permanently, the first time this account's email matches
+// HATCH_ADMIN_EMAILS (see claimAdminIfEligible in hatchApi.js). Storing the
+// grant on the row — instead of re-checking the email against the env var on
+// every request — means admin status can't flicker if that env var is later
+// edited, typo'd, or briefly unset during a redeploy.
+addColumnIfMissing("users", "is_admin", "INTEGER NOT NULL DEFAULT 0");
 
 // One-time copy of the legacy notification inbox into system conversations,
 // so nobody loses their message history when the messaging UI replaces the

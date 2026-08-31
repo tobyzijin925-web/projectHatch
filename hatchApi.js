@@ -11,8 +11,8 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Accounts whose email is listed here get admin powers: deleting hatches,
 // reviewing operator applications, and messaging any inbox. Emails are not
-// verified, so admin belongs to whoever registers the address first — fine
-// for local use, revisit before hosting this anywhere public.
+// verified, so admin still belongs to whoever registers the address first —
+// fine for local use, revisit before hosting this anywhere public.
 // The real admin address is set via HATCH_ADMIN_EMAILS in .env.local (git-
 // ignored) so it isn't baked into committed source. The placeholder below is
 // only a last-resort default and grants admin to nobody real.
@@ -23,8 +23,19 @@ const ADMIN_EMAILS = new Set(
     .filter(Boolean),
 );
 
+// The grant itself lives on users.is_admin, claimed once and permanently —
+// NOT re-derived from ADMIN_EMAILS on every request. Call this right after a
+// signup or a successful login; it's a no-op once already claimed, so later
+// edits to HATCH_ADMIN_EMAILS (typos, temporary unsets during a redeploy)
+// can't silently strip or move admin off an account that already holds it.
+function claimAdminIfEligible(user) {
+  if (!user || user.is_admin || !ADMIN_EMAILS.has(String(user.email || "").toLowerCase())) return;
+  db.prepare("UPDATE users SET is_admin = 1 WHERE id = ?").run(user.id);
+  user.is_admin = 1;
+}
+
 function isAdminUser(user) {
-  return Boolean(user && ADMIN_EMAILS.has(String(user.email || "").toLowerCase()));
+  return Boolean(user && user.is_admin);
 }
 
 // Canonical machine states live in the database; the frontend renders the
@@ -149,7 +160,7 @@ function authenticate(req) {
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   if (!token) return null;
   const row = db.prepare(`
-    SELECT u.id, u.username, u.email, u.name, u.role, u.joined_at, u.avatar_data, s.token_hash, s.expires_at
+    SELECT u.id, u.username, u.email, u.name, u.role, u.joined_at, u.avatar_data, u.is_admin, s.token_hash, s.expires_at
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token_hash = ?
   `).get(hashToken(token));
@@ -473,7 +484,8 @@ async function handleSignup(req, res) {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(username, email, name, role, hash, salt, joinedAt);
 
-  const user = { id: Number(inserted.lastInsertRowid), username, email, name, role, joined_at: joinedAt };
+  const user = { id: Number(inserted.lastInsertRowid), username, email, name, role, joined_at: joinedAt, is_admin: 0 };
+  claimAdminIfEligible(user);
   notify(user.id, {
     subject: "Welcome to Hatch 🐣",
     body: "Thanks for being an early user. Post what you need done and Chickie will shape it into a clear brief — or claim an open Hatch to build your track record. Updates about your Hatches will arrive here in Messages.",
@@ -491,6 +503,7 @@ async function handleLogin(req, res) {
   if (!user || !passwordMatches(password, user.password_salt, user.password_hash)) {
     return fail(res, 401, "We couldn't match that login. Check your details and try again.");
   }
+  claimAdminIfEligible(user);
   sendJson(res, 200, { ok: true, token: createSession(user.id), account: accountPayload(user) });
 }
 
