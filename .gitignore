@@ -36,3 +36,8 @@ data/
 *.db
 *.db-wal
 *.db-shm
+
+# Claude Code local settings (machine-specific permissions/paths). Currently
+# only excluded by contributors' global git ignore — listed here too so a
+# fresh clone doesn't accidentally track it.
+.claude/settings.local.json
