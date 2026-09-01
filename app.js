@@ -28,158 +28,6 @@ Object.assign(window.SkillNestApp, (() => {
     submitReviewedHatch, toggleFinalEditList, toggleVoiceInput, updateBriefField,
     updateDraftFileLabel, updateLiveTaskPreview, updateSection, useExampleTask, useTaskChip,
   } = window.SkillNestApp;
-  function finishAuth(account) {
-    localStorage.setItem("skillnestLoggedIn", "true");
-    if (localStorage.getItem("hatchPendingSubmit") === "true") {
-      submitReviewedHatch();
-      return;
-    }
-    const pendingMessageTo = localStorage.getItem("hatchPendingMessageTo");
-    if (pendingMessageTo) {
-      localStorage.removeItem("hatchPendingMessageTo");
-      setRoute(accountRoute(account));
-      window.setTimeout(() => messageOperator(pendingMessageTo), 60);
-      return;
-    }
-    if (completePendingMission()) return;
-    setRoute(accountRoute(account));
-  }
-
-  async function completeLogin(event) {
-    event.preventDefault();
-    const local = getAccount();
-    const usernameOrEmail = document.getElementById("loginUsername").value.trim();
-    const password = document.getElementById("loginPassword").value;
-
-    // Backend first, so the session carries server truth (role, isAdmin).
-    const result = await backendFetch("/api/auth/login", {
-      method: "POST",
-      body: { usernameOrEmail, password: backendPassword(password) },
-    });
-    if (result?.ok) {
-      storeBackendSession(result, { password });
-      finishAuth(getAccount());
-      return;
-    }
-
-    // Backend down or unknown account: legacy local check.
-    const matchesIdentity = usernameOrEmail === local.username || usernameOrEmail === local.email;
-    const matchesPassword = !local.password || password === local.password;
-    if (!matchesIdentity || !matchesPassword) {
-      document.getElementById("loginError")?.classList.add("show");
-      return;
-    }
-    // Local-only account against a live backend: migrate it so the account
-    // (and its inbox) exists server-side from now on.
-    if (result !== null) {
-      const migrated = await backendFetch("/api/auth/signup", {
-        method: "POST",
-        body: {
-          username: local.username,
-          name: local.name,
-          email: local.email,
-          password: backendPassword(password || local.password || local.username),
-          role: local.role,
-        },
-      });
-      if (migrated?.ok) storeBackendSession(migrated, { password });
-    }
-    finishAuth(getAccount());
-  }
-
-  async function completeSignup(event) {
-    event.preventDefault();
-    // The checkbox is `required`, so the browser normally blocks submit before
-    // we get here — but guard anyway in case the field is ever bypassed.
-    const termsBox = document.getElementById("authTerms");
-    if (termsBox && !termsBox.checked) {
-      termsBox.reportValidity?.();
-      return;
-    }
-    const account = {
-      username: document.getElementById("authUsername").value.trim(),
-      name: document.getElementById("authName").value.trim(),
-      email: document.getElementById("authEmail").value.trim(),
-      password: document.getElementById("authPassword").value,
-      role: document.getElementById("authRole").value,
-      joinedAt: new Date().toISOString(),
-      // Record consent so it's tied to the version of the terms shown at signup.
-      acceptedTermsAt: new Date().toISOString(),
-      termsVersion: Pages.LEGAL_VERSION,
-    };
-
-    // Language preferences chosen during setup, stored on the account so they
-    // follow the user rather than the device.
-    const prefs = window.HatchI18n?.setPrefs({
-      contentLanguage: document.getElementById("authLanguage")?.value,
-      foreignHatches: document.querySelector('input[name="authForeignHatches"]:checked')?.value,
-    });
-    if (prefs) {
-      account.contentLanguage = prefs.contentLanguage;
-      account.foreignHatches = prefs.foreignHatches;
-    }
-
-    localStorage.setItem("skillnestAccount", JSON.stringify(account));
-
-    let result = await backendFetch("/api/auth/signup", {
-      method: "POST",
-      body: { ...account, password: backendPassword(account.password) },
-    });
-    // Already registered on the backend (e.g. new browser): sign in instead.
-    if (result && !result.ok) {
-      result = await backendFetch("/api/auth/login", {
-        method: "POST",
-        body: { usernameOrEmail: account.username || account.email, password: backendPassword(account.password) },
-      });
-    }
-    if (result?.ok) storeBackendSession(result, { password: account.password });
-    finishAuth(getAccount());
-  }
-
-  async function quickTestLogin() {
-    const account = {
-      username: "test_operator",
-      name: "Test Operator",
-      email: "test@hatch.local",
-      password: "test",
-      role: "Client and Operator",
-      provider: "Quick test login",
-      joinedAt: new Date().toISOString(),
-    };
-    localStorage.setItem("skillnestAccount", JSON.stringify(account));
-    let result = await backendFetch("/api/auth/login", {
-      method: "POST",
-      body: { usernameOrEmail: account.username, password: backendPassword(account.password) },
-    });
-    if (result && !result.ok) {
-      result = await backendFetch("/api/auth/signup", {
-        method: "POST",
-        body: { ...account, password: backendPassword(account.password) },
-      });
-    }
-    if (result?.ok) storeBackendSession(result, { password: account.password, provider: account.provider });
-    localStorage.setItem("skillnestLoggedIn", "true");
-    if (localStorage.getItem("hatchPendingSubmit") === "true") {
-      submitReviewedHatch();
-      return;
-    }
-    if (completePendingMission()) return;
-    setRoute("profile");
-  }
-
-  function socialLogin() {
-    document.getElementById("loginError")?.classList.add("show");
-  }
-
-  function logout() {
-    if (backendToken()) backendFetch("/api/auth/logout", { method: "POST" });
-    localStorage.removeItem("hatchAuthToken");
-    localStorage.removeItem("skillnestLoggedIn");
-    clearMessagingState();
-    setRoute("home");
-    render();
-  }
-
   function toggleChoice(event, button) {
     event.preventDefault();
     const isPressed = button.getAttribute("aria-pressed") === "true";
@@ -2056,6 +1904,7 @@ Object.assign(window.SkillNestApp, (() => {
   window.addEventListener("hashchange", render);
 
   return {
+    completePendingMission,
     applyTaskFilters,
     applyOperatorFilters,
     applyClientFilters,
@@ -2070,11 +1919,8 @@ Object.assign(window.SkillNestApp, (() => {
     findAnyTask,
     openModal,
     clearMessagingState,
-    completeLogin,
-    completeSignup,
     addCustomChoice,
     deletePostedTask,
-    logout,
     finishOperatorWizard,
     operatorAccountStep,
     operatorContinueLoggedIn,
@@ -2088,7 +1934,6 @@ Object.assign(window.SkillNestApp, (() => {
     openTaskDetail,
     openVerifiedOperatorProfile,
     openVerifiedProject,
-    quickTestLogin,
     removeMission,
     openSubmitWork,
     handleSubmissionFiles,
@@ -2127,7 +1972,6 @@ Object.assign(window.SkillNestApp, (() => {
     saveMission,
     shareVerifiedWork,
     showOperatorTab,
-    socialLogin,
     submitOperator,
     testDeepSeekConnection,
     toggleChoice,
