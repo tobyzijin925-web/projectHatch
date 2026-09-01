@@ -5,8 +5,8 @@ Object.assign(window.SkillNestApp, (() => {
   const Pages = window.SkillNestPages;
   // Provided by app/theme-language.js, app/backend-client.js,
   // app/task-store.js, app/intake-assistant.js, app/directory-filters.js,
-  // app/work-submissions.js, and app/operator-application.js, all loaded
-  // just before this file.
+  // app/work-submissions.js, app/operator-application.js, and app/browse.js,
+  // all loaded just before this file.
   const {
     currentRoute, setRoute, applyDarkModePreference, toggleDarkMode, toggleLanguageMenu,
     closeLanguageMenu, toggleBrowseMenu, closeBrowseMenu, chooseLanguage, showLanguageGate,
@@ -30,59 +30,8 @@ Object.assign(window.SkillNestApp, (() => {
     updateDraftFileLabel, updateLiveTaskPreview, updateSection, useExampleTask, useTaskChip,
     applyTaskFilters, applyOperatorFilters, applyClientFilters, clientRecommendationContext,
     syncMissionCardStates, getPublishedResults, getOperatorWizard, refreshApplicationStatus,
+    refreshOpenHatches,
   } = window.SkillNestApp;
-  let openHatchesRefreshInFlight = false;
-  async function refreshOpenHatches() {
-    if (openHatchesRefreshInFlight) return;
-    openHatchesRefreshInFlight = true;
-    const data = await backendFetch("/api/hatches");
-    openHatchesRefreshInFlight = false;
-    if (!data?.ok) return;
-    const cache = JSON.stringify(data.hatches);
-    if (cache !== localStorage.getItem("hatchOpenHatchesCache")) {
-      localStorage.setItem("hatchOpenHatchesCache", cache);
-      render();
-    }
-  }
-
-  let browseRefreshStatusTimer = null;
-  function flashBrowseRefreshStatus(text) {
-    const note = document.getElementById("browseRefreshStatus");
-    if (!note) return;
-    note.textContent = text;
-    note.classList.add("show");
-    window.clearTimeout(browseRefreshStatusTimer);
-    browseRefreshStatusTimer = window.setTimeout(() => note.classList.remove("show"), 2200);
-  }
-
-  // User-triggered feed refresh from the browse toolbar button. Unlike the
-  // passive refreshOpenHatches() above (which stays silent when nothing
-  // changed), this always gives feedback: the icon spins while fetching, then
-  // the feed either re-renders with the newest Hatches or flashes a short note.
-  async function refreshBrowse() {
-    const btn = document.querySelector(".browse-refresh");
-    if (btn) { btn.disabled = true; btn.classList.add("is-refreshing"); }
-    openHatchesRefreshInFlight = false; // force a fetch even if one just ran
-    const data = await backendFetch("/api/hatches");
-    if (data?.ok) {
-      const cache = JSON.stringify(data.hatches);
-      const changed = cache !== localStorage.getItem("hatchOpenHatchesCache");
-      localStorage.setItem("hatchOpenHatchesCache", cache);
-      if (changed) { render(); return; } // render() rebuilds a fresh button
-    }
-    // No change (or the backend was unreachable): stop the spinner in place so
-    // the click never feels like it did nothing.
-    if (btn) { btn.disabled = false; btn.classList.remove("is-refreshing"); }
-    flashBrowseRefreshStatus(data?.ok ? "Up to date" : "Couldn't reach the server");
-  }
-
-  // ── Messaging ──────────────────────────────────────────────────────────────
-  // Conversations live on the backend; a localStorage cache lets render()
-  // stay synchronous. Refreshes re-render only when something actually
-  // changed, so the refresh-inside-render cycle settles instead of looping.
-  // The open thread lives in module state (it survives re-renders because
-  // the JS context does; only the DOM is rebuilt).
-
   let messagingThread = { conversationId: null, conversation: null, messages: [], loading: false };
   let messagesFilter = "all";
 
@@ -1024,7 +973,6 @@ Object.assign(window.SkillNestApp, (() => {
     saveSiteStats,
     refreshSiteStats,
     getSiteStats,
-    refreshBrowse,
     previewSiteStatsBanner,
     shareVerifiedWork,
     showOperatorTab,
