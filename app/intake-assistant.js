@@ -144,7 +144,7 @@ Object.assign(window.SkillNestApp, (() => {
       const tick = () => {
         pos = Math.min(full.length, pos + 1);
         paragraph.textContent = full.slice(0, pos);
-        scrollAssistantToLatest();
+        window.SkillNestApp.scrollAssistantToLatest();
         if (pos < full.length) {
           typingTimers.push(window.setTimeout(tick, typingDelayFor(full)));
         } else {

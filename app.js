@@ -284,6 +284,7 @@ Object.assign(window.SkillNestApp, (() => {
     openVerifiedOperatorProfile,
     openVerifiedProject,
     render,
+    scrollAssistantToLatest,
     shareVerifiedWork,
     showOperatorTab,
     testDeepSeekConnection,
